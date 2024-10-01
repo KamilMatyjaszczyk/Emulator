@@ -38,8 +38,11 @@ Z80 = {
         Z80._r.r = (Z80._r.r+1) & 127; // Øker R-registeret med 1 og begrenser det til 7-biter (0-127), da r er refresh teller
         Z80._map[MMU.rb(Z80._r.pc++)](); // Hent neste instruksjon fra minnet via PC og utfør instruksjonen
         Z80._r.pc &= 65535; // Begrens PC til 16-bits verdi (0x0000 - 0xFFFF) for å holde det innenfor minneområdet
-        Z80._clock.m += Z80._r.m; Z80._clock.t += Z80._r.t; // Legg til antall maskinsykluser og klokkesykluser til det totale klokketelleren
+        Z80._clock.m += Z80._r.m;
+        Z80._clock.t += Z80._r.t; // Legg til antall maskinsykluser og klokkesykluser til det totale klokketelleren
         if(MMU._inbios && Z80._r.pc == 0x0100) MMU._inbios=0; // Hvis vi er i BIOS-modus og PC har nådd 0x0100, avslutt BIOS-modus, unngår === med vilje for løs sammenligning
+
+        GPU.step();
     },
     _ops: {
         // Les to bytes fra programminnet for å lage en 16-bits adresse, og les deretter en byte fra den adressen og lagre i A (LD A, addr)
