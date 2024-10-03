@@ -101,7 +101,14 @@ MMU = {
     },
 
     /* skriv 8-bit byte til en gitt adresse */
-    wb: function(addr, val) {  },
+    wb: function(addr, val) {
+        switch (addr & 0xF000) {
+            case 0x8000: case 0x9000: //vram
+                GPU._vram[addr & 0x1FFF] = val;
+                GPU.updatetile(addr, val);
+                break;
+        }
+    },
 
     /* skriv 16-bit ord til en gitt adresse */
     ww: function(addr, val) {  },
