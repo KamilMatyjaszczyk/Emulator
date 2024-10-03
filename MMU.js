@@ -8,9 +8,9 @@ MMU = {
     _wram: [],
     _eram: [],
     _zram: [],
-    _tileset: [],
 
-    reset: function() { // denne må optimaliseres i etterkant
+
+    reset: function() {
         GPU._tileset = [];
 
         for(i=0; i<8192; i++) {
@@ -23,21 +23,7 @@ MMU = {
         MMU._inbios=1;
         MMU._ie=0;
         MMU._if=0;
-
-        for(var i = 0; i < 384; i++)
-        {
-            GPU._tileset[i] = [];
-            for(var j = 0; j < 8; j++)
-            {
-                GPU._tileset[i][j] = [0,0,0,0,0,0,0,0];
-            }
-        }
     },
-
-    updatetile: function (addr, val ) {
-
-    },
-
     /* Leser 8-bit byte fra gitt adresse */
     rb: function(addr) {
         switch (addr & 0xF000) {
