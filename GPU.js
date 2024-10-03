@@ -76,15 +76,15 @@ GPU = {
 
     updatetile: function (addr, val ) {
         addr &= 0x1FFE; // avgrenser riktig område
-        var tile = (addr >> 4) & 511;
-        var y = (addr >> 1) & 7;
-        var sx;
-        for(var x = 0; x < 8; x++)
+        var tile = (addr >> 4) & 511; //finner hvilket flis
+        var y = (addr >> 1) & 7;// hvilken rad i flisen
+        var sx; //kontroll bitmaske
+        for(var x = 0; x < 8; x++) //går gjennom 8 piksler i bestent rad
         {
             sx = 1 << (7-x);
-            GPU._tileset[tile][y][x] =
-                ((GPU._vram[addr] & sx)   ? 1 : 0) +
-                ((GPU._vram[addr+1] & sx) ? 2 : 0);
+            GPU._tileset[tile][y][x] = //oppdaterer verdien
+                ((GPU._vram[addr] & sx)   ? 1 : 0) +  //første byte
+                ((GPU._vram[addr+1] & sx) ? 2 : 0); // andre byte
         }
     },
 
