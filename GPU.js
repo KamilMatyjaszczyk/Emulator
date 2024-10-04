@@ -7,6 +7,7 @@ GPU = {
     _canvas: [],
     _scrn: {},
     _tileset: [],
+    //_bgmap: 0,
 
     reset: function () {
     var c = document.getElementById('screen'); // Henter canvas-elementet med ID 'screen'
@@ -89,6 +90,93 @@ GPU = {
     },
 
     renderscan: function () {
-
+        var mapoffs = GPU._bgmap ? 0x1c00 : 0x1800;
+        mapoffs += ((GPU._line + GPU._scy) & 255) >> 3;
+        var lineoffs = (GPU._scx >> 3);
+        var y = (GPU._line + GPU._scy) & 7;
+        var x = GPU._scx & 7;
+        var canvasoffs = GPU._line * 160 * 4;
+        var colour;
+        var tile = GPU._vram[mapoffs + lineoffs];
+        if(GPU._bgtile == 1 && tile < 128) tile += 256;
+        for(var i = 0; i < 160; i++) {
+            colour = GPU._pal[GPU._tileset[tile][y][x]];
+            GPU._scrn.data[canvasoffs+0] = colour[0];
+            GPU._scrn.data[canvasoffs+1] = colour[1];
+            GPU._scrn.data[canvasoffs+2] = colour[2];
+            GPU._scrn.data[canvasoffs+3] = colour[3];
+            canvasoffs += 4;
+            x++;
+            if(x == 8) {
+                x = 0;
+                lineoffs = (lineoffs + 1) & 31;
+                tile = GPU._vram[mapoffs + lineoffs];
+                if(GPU._bgtile == 1 && tile < 128) tile += 256;
+            }
+        }
     },
+    rb: function(addr)
+    {
+        switch(addr)
+        {
+            // LCD Control
+            case 0xFF40:
+                return (GPU._switchbg  ? 0x01 : 0x00) |
+                    (GPU._bgmap     ? 0x08 : 0x00) |
+                    (GPU._bgtile    ? 0x10 : 0x00) |
+                    (GPU._switchlcd ? 0x80 : 0x00);
+
+            // Scroll Y
+            case 0xFF42:
+                return GPU._scy;
+
+            // Scroll X
+            case 0xFF43:
+                return GPU._scx;
+
+            // Current scanline
+            case 0xFF44:
+                return GPU._line;
+        }
+    },
+
+    wb: function(addr, val)
+    {
+        switch(addr)
+        {
+            // LCD Control
+            case 0xFF40:
+                GPU._switchbg  = (val & 0x01) ? 1 : 0;
+                GPU._bgmap     = (val & 0x08) ? 1 : 0;
+                GPU._bgtile    = (val & 0x10) ? 1 : 0;
+                GPU._switchlcd = (val & 0x80) ? 1 : 0;
+                break;
+
+            // Scroll Y
+            case 0xFF42:
+                GPU._scy = val;
+                break;
+
+            // Scroll X
+            case 0xFF43:
+                GPU._scx = val;
+                break;
+
+            // Background palette
+            case 0xFF47:
+                for(var i = 0; i < 4; i++)
+                {
+                    switch((val >> (i * 2)) & 3)
+                    {
+                        case 0: GPU._pal[i] = [255,255,255,255]; break;
+                        case 1: GPU._pal[i] = [192,192,192,255]; break;
+                        case 2: GPU._pal[i] = [ 96, 96, 96,255]; break;
+                        case 3: GPU._pal[i] = [  0,  0,  0,255]; break;
+                    }
+                }
+                break;
+        }
+    }
+
+
 }
