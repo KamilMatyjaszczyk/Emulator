@@ -89,6 +89,6 @@ GPU = {
     },
 
     renderscan: function () {
-tester github
+
     },
 }
