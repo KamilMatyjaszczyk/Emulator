@@ -8,6 +8,8 @@ MMU = {
     _wram: [],
     _eram: [],
     _zram: [],
+    _ie: 0,
+    _if: 0,
 
 
     reset: function() {
@@ -20,7 +22,6 @@ MMU = {
         for(i=0; i<127; i++) {
             MMU._zram[i] = 0;
         }
-        MMU._inbios=1;
         MMU._ie=0;
         MMU._if=0;
     },
@@ -94,24 +95,20 @@ MMU = {
 
                     // Grafisk RAM atributter, hvor OAM er 160 bytes
                     case 0xE00:
-                        if (addr < 0xFEA0)
-                            return GPU._oam[addr & 0xFF];
-                        else
-                            return 0;
+                        return (addr < 0xFEA0) ? GPU._oam[addr & 0xFF] : 0;
                     //Zero Page
                     case 0xF00:
-                        if (addr >= 0xFF80) {
+                        if (addr == 0xFFFF) {
+                            return MMU._ie;
+                        } else if (addr >= 0xFF80) {
                             return MMU._zram[addr & 0x7F];
                         } else {
-                            // I/O kontrollbehandling, atm ingen.
-                            switch (addr & 0x00F0) {
-                                // GPU register (64 GPU-registere)
-                                case 0x40:
-                                case 0x50:
-                                case 0x60:
-                                case 0x70:
-                                    return GPU.rb(addr);
-                                default:
+                            switch (addr & 0x00f0) {
+                                case 0x00:
+                                    if (addr == 0xFF0F) {
+                                        return MMU._if;
+                                    }
+                                    break;
                                     return 0;
                             }
                         }
@@ -127,21 +124,28 @@ MMU = {
     /* skriv 8-bit byte til en gitt adresse */
     wb: function(addr, val) {
         switch (addr & 0xF000) {
-            case 0x8000: case 0x9000: //vram
+            case 0x8000: case 0x9000: // VRAM
                 GPU._vram[addr & 0x1FFF] = val;
                 GPU.updatetile(addr, val);
                 break;
 
             case 0xF000:
                 switch (addr & 0x0F00) {
-                    // Zero-page
+                    // OAM (Object Attribute Memory)
+                    case 0xE00:
+                        if (addr < 0xFEA0) {
+                            GPU._oam[addr & 0xFF] = val;
+                            GPU.buildobjdata(addr - 0xFE00, val);
+                        }
+                        break;
+
+                    // Zero-page RAM og I/O-håndtering
                     case 0xF00:
                         if (addr >= 0xFF80) {
                             MMU._zram[addr & 0x7F] = val;
                         } else {
-                            // I/O handling
+                            // Håndtering av GPU I/O-adresser
                             switch (addr & 0x00F0) {
-                                // GPU related addresses
                                 case 0x40:
                                 case 0x50:
                                 case 0x60:

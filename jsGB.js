@@ -1,18 +1,17 @@
 jsGB = {
     reset: function()
     {
-        GPU.reset();
-        MMU.reset();
-        Z80.reset();
-
-        MMU.load('rom/ttt.gb');
+        GPU.reset()
+        MMU.reset()
+        Z80.reset()
+        MMU.load('rom/opus5.gb')
     },
 
     frame: function()
     {
         var fclk = Z80._clock.t + 70224;
         do
-        {
+         {
             Z80._map[MMU.rb(Z80._r.pc++)]();
             Z80._r.pc &= 65535;
             Z80._clock.m += Z80._r.m;
