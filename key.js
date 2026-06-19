@@ -12,12 +12,10 @@ KEY = {
 
     rb: function(addr)
     {
-        switch(KEY._column)
-        {
-            case 0x10: return KEY._rows[0];
-            case 0x20: return KEY._rows[1];
-            default: return 0;
-        }
+        var result = 0x0F;
+        if (!(KEY._column & 0x20)) result &= KEY._rows[0];
+        if (!(KEY._column & 0x10)) result &= KEY._rows[1];
+        return result;
     },
 
     wb: function(addr, val)
@@ -27,16 +25,20 @@ KEY = {
 
     kdown: function(e)
     {
+        var before = KEY._rows[0] & KEY._rows[1];
         switch(e.keyCode)
         {
-            case 39: KEY._keys[1] &= 0xE; break;
-            case 37: KEY._keys[1] &= 0xD; break;
-            case 38: KEY._keys[1] &= 0xB; break;
-            case 40: KEY._keys[1] &= 0x7; break;
-            case 90: KEY._keys[0] &= 0xE; break;
-            case 88: KEY._keys[0] &= 0xD; break;
-            case 32: KEY._keys[0] &= 0xB; break;
-            case 13: KEY._keys[0] &= 0x7; break;
+            case 39: KEY._rows[1] &= 0xE; break;
+            case 37: KEY._rows[1] &= 0xD; break;
+            case 38: KEY._rows[1] &= 0xB; break;
+            case 40: KEY._rows[1] &= 0x7; break;
+            case 90: KEY._rows[0] &= 0xE; break;
+            case 88: KEY._rows[0] &= 0xD; break;
+            case 32: KEY._rows[0] &= 0xB; break;
+            case 13: KEY._rows[0] &= 0x7; break;
+        }
+        if ((KEY._rows[0] & KEY._rows[1]) !== before && typeof MMU !== 'undefined') {
+            MMU._if |= 0x10;
         }
     },
 
@@ -44,14 +46,14 @@ KEY = {
     {
         switch(e.keyCode)
         {
-            case 39: KEY._keys[1] |= 0x1; break;
-            case 37: KEY._keys[1] |= 0x2; break;
-            case 38: KEY._keys[1] |= 0x4; break;
-            case 40: KEY._keys[1] |= 0x8; break;
-            case 90: KEY._keys[0] |= 0x1; break;
-            case 88: KEY._keys[0] |= 0x2; break;
-            case 32: KEY._keys[0] |= 0x4; break;
-            case 13: KEY._keys[0] |= 0x8; break;
+            case 39: KEY._rows[1] |= 0x1; break;
+            case 37: KEY._rows[1] |= 0x2; break;
+            case 38: KEY._rows[1] |= 0x4; break;
+            case 40: KEY._rows[1] |= 0x8; break;
+            case 90: KEY._rows[0] |= 0x1; break;
+            case 88: KEY._rows[0] |= 0x2; break;
+            case 32: KEY._rows[0] |= 0x4; break;
+            case 13: KEY._rows[0] |= 0x8; break;
         }
     }
 };
