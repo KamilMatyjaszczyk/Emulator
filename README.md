@@ -411,7 +411,6 @@ The Game Boy has five interrupt sources:
 | `fileread.js` | Reads binary ROM files over HTTP |
 | `tests/z80.test.js` | CPU regression tests |
 | `tests/mmu.test.js` | MMU, MBC3, and I/O tests |
-| `.gitignore` | Prevents ROM files and local JetBrains files from being committed |
 
 ## Tests
 
@@ -463,7 +462,7 @@ The tests cover:
 
 Natural next steps include:
 
-1. Persistent save files using `localStorage` or IndexedDB
+1. Persistent save files using `localStorage`
 2. A ROM selector in the user interface
 3. Audio/APU support
 4. More memory bank controllers, such as MBC1 and MBC5
