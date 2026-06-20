@@ -2,7 +2,7 @@
 MMU = {
     _inbios: 0,
     _bios: [],
-    _rom: '',
+    _rom: new Uint8Array(0),
     _wram: new Uint8Array(0x2000),
     _eram: new Uint8Array(0x8000),
     _zram: new Uint8Array(0x7F),
@@ -68,9 +68,19 @@ MMU = {
         if (typeof KEY !== 'undefined') KEY.reset();
     },
 
-    load: function(file) {
-        var reader = new BinFileReader(file);
-        MMU._rom = reader.readString(reader.getFileSize(), 0);
+    load: function(data) {
+        if (data instanceof ArrayBuffer) {
+            MMU._rom = new Uint8Array(data);
+        } else if (ArrayBuffer.isView(data)) {
+            MMU._rom = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        } else {
+            throw new TypeError('MMU.load expects an ArrayBuffer or byte array');
+        }
+
+        if (MMU._rom.length < 0x150) {
+            throw new Error('The selected file is too small to be a Game Boy ROM');
+        }
+
         MMU._configureCartridge();
     },
 
@@ -80,8 +90,17 @@ MMU = {
 
         if (MMU._cartridgeType >= 0x0F && MMU._cartridgeType <= 0x13) {
             MMU._mapper = 'MBC3';
-        } else {
+        } else if (
+            MMU._cartridgeType === 0x00 ||
+            MMU._cartridgeType === 0x08 ||
+            MMU._cartridgeType === 0x09
+        ) {
             MMU._mapper = 'ROM';
+        } else {
+            throw new Error(
+                'Unsupported cartridge type: 0x' +
+                MMU._cartridgeType.toString(16).toUpperCase().padStart(2, '0')
+            );
         }
         MMU._hasRTC = MMU._cartridgeType === 0x0F || MMU._cartridgeType === 0x10;
 
@@ -121,7 +140,7 @@ MMU = {
 
     _romByte: function(index) {
         if (index < 0 || index >= MMU._rom.length) return 0xFF;
-        return MMU._rom.charCodeAt(index) & 0xFF;
+        return MMU._rom[index];
     },
 
     rb: function(addr) {

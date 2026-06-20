@@ -8,23 +8,15 @@ The project emulates the original Game Boy's Sharp LR35902 processor.
 
 ## Getting Started
 
-### 1. Add a ROM
+### 1. Choose a ROM
 
-The default configuration expects the following file:
+Start the page and use the **ROM** file picker to select a local `.gb` or `.gbc` file. The ROM is read directly from your computer and is not uploaded anywhere.
 
-```text
-rom/poke.gb
-```
-
-The ROM path can be changed in `jsGB.reset()`:
-
-```javascript
-MMU.load('rom/poke.gb');
-```
+The repository does not require a `rom/` directory, and no ROM path is hardcoded in the source code.
 
 ### 2. Start a Local Web Server
 
-The project cannot be opened directly through `file://`, because the browser prevents JavaScript from reading the ROM file. Start a local web server from the project directory:
+The local file picker does not require the ROM to be served over HTTP. However, using a local web server is still recommended for consistent browser behavior:
 
 ```bash
 python3 -m http.server 8000
@@ -40,7 +32,7 @@ Python is only used to serve the files over HTTP. The emulator itself is written
 
 ### 3. Start the Emulator
 
-Press **Run** to start and **Pause** to stop the execution loop. **Reset** resets the machine and reloads the ROM.
+After selecting a ROM, press **Run** to start and **Pause** to stop the execution loop. **Reset** resets the machine while keeping the selected ROM loaded.
 
 If the browser shows an older version after a code change, use:
 
@@ -102,12 +94,12 @@ sequenceDiagram
     participant GPU as GPU.js
     participant Canvas as HTML canvas
 
+    UI->>ROM: file.arrayBuffer()
+    ROM-->>UI: Local ROM bytes
     UI->>GPU: reset()
     UI->>MMU: reset()
     UI->>CPU: reset()
-    UI->>MMU: load("rom/poke.gb")
-    MMU->>ROM: Read binary game data
-    ROM-->>MMU: ROM bytes and cartridge header
+    UI->>MMU: load(romBytes)
     MMU->>MMU: Determine mapper, ROM banks, and RAM size
     loop Each CPU instruction
         CPU->>MMU: Read opcode or data
@@ -120,7 +112,18 @@ sequenceDiagram
     GPU->>Canvas: Present the completed frame during VBlank
 ```
 
-### 1. The Machine Is Reset
+### 1. The ROM File Is Read
+
+When the user chooses a file, `jsGB.loadROM()` reads it with the browser File API:
+
+```javascript
+var buffer = await file.arrayBuffer();
+jsGB._romData = new Uint8Array(buffer);
+```
+
+The resulting bytes are stored in `jsGB._romData`. This allows Reset to restart the emulator without asking the user to select the file again.
+
+### 2. The Machine Is Reset
 
 `jsGB.reset()` begins by resetting the emulated hardware:
 
@@ -138,21 +141,21 @@ The GPU, MMU, and CPU are given known initial values:
 
 Address `0x0100` is the beginning of the cartridge program after a real Game Boy would normally have finished running its boot ROM.
 
-### 2. The ROM Is Loaded
+### 3. The ROM Is Loaded into the MMU
 
-`jsGB.reset()` then calls:
+After resetting the hardware, `jsGB.reset()` passes the selected bytes to the MMU:
 
 ```javascript
-MMU.load('rom/poke.gb');
+MMU.load(jsGB._romData);
 ```
 
-`MMU.load()` uses `BinFileReader` to read the entire `.gb` file. Its contents are stored in `MMU._rom`, allowing the CPU to read program instructions and game data through the Game Boy address space.
+`MMU.load()` stores the byte array in `MMU._rom`, allowing the CPU to read program instructions and game data through the Game Boy address space.
 
 The MMU also reads the cartridge header, including addresses `0x0147` and `0x0149`. The header describes the cartridge's memory controller, number of ROM banks, and amount of external RAM.
 
 For an MBC3 cartridge, this allows the MMU to change which part of a large ROM is visible in the `4000–7FFF` address range.
 
-### 3. The CPU Starts Running the Game
+### 4. The CPU Starts Running the Game
 
 When the user presses **Run**, `jsGB.frame()` executes CPU instructions until approximately 70,224 clock cycles have passed.
 
@@ -164,7 +167,7 @@ Z80.exec();
 
 The CPU uses the program counter to ask the MMU for the next opcode. The MMU determines which ROM bank contains the address and returns the correct byte. The CPU interprets the byte as an instruction and executes it.
 
-### 4. The MMU Routes Memory Access
+### 5. The MMU Routes Memory Access
 
 The game communicates with the emulated hardware by reading and writing specific addresses. The CPU does not access the components directly; it only uses `MMU.rb()` and `MMU.wb()`.
 
@@ -178,7 +181,7 @@ Examples:
 
 The MMU therefore acts as the central traffic controller for the emulator.
 
-### 5. The GPU Builds the Image
+### 6. The GPU Builds the Image
 
 A Game Boy frame is built gradually, one scanline at a time. After each CPU instruction, the GPU is told how many clock cycles that instruction consumed.
 
@@ -197,7 +200,7 @@ GPU._canvas.putImageData(GPU._scrn, 0, 0);
 
 While the GPU is drawing a frame, the CPU continues executing the game's logic. Clock-cycle accounting keeps the two components running at approximately the same pace.
 
-### 6. The Game Repeats the Loop
+### 7. The Game Repeats the Loop
 
 After VBlank, the GPU returns to the top of the screen. `jsGB.js` continues asking the CPU to run new frames approximately 60 times per second.
 
@@ -207,11 +210,13 @@ Keyboard input, timer events, and completed frames can set interrupt flags. The 
 
 When the page has finished loading, `window.onload` in `jsGB.js` runs:
 
-1. Click handlers are connected to **Reset** and **Run**.
-2. `jsGB.reset()` resets the GPU, MMU, and CPU.
-3. The MMU loads the ROM file.
-4. The cartridge header is read to determine the mapper, ROM banks, and RAM size.
-5. The CPU starts at address `0x0100`, as though the original boot ROM had already completed.
+1. Handlers are connected to the ROM selector, **Reset**, and **Run**.
+2. The page waits until the user selects a local ROM.
+3. The browser reads the file into a `Uint8Array`.
+4. `jsGB.reset()` resets the GPU, MMU, and CPU.
+5. The MMU loads the ROM bytes and reads the cartridge header.
+6. The mapper, ROM banks, and RAM size are configured.
+7. The CPU is ready at address `0x0100`, as though the original boot ROM had already completed.
 
 The boot ROM is therefore not emulated. CPU registers and selected hardware registers are initialized directly to the values the machine normally has after startup.
 
@@ -401,14 +406,13 @@ The Game Boy has five interrupt sources:
 
 | File | Responsibility |
 |---|---|
-| `index.html` | User interface, canvas, and script loading |
-| `jsGB.js` | Reset, Run/Pause, and the frame loop |
+| `index.html` | User interface, ROM file picker, canvas, and script loading |
+| `jsGB.js` | Local ROM loading, Reset, Run/Pause, and the frame loop |
 | `z80.js` | LR35902 CPU and opcode tables |
 | `MMU.js` | Memory map, cartridge banks, I/O, DMA, and RTC |
 | `GPU.js` | LCD timing and rendering |
 | `timer.js` | DIV/TIMA/TMA/TAC |
 | `key.js` | Keyboard and joypad |
-| `fileread.js` | Reads binary ROM files over HTTP |
 | `tests/z80.test.js` | CPU regression tests |
 | `tests/mmu.test.js` | MMU, MBC3, and I/O tests |
 
@@ -455,19 +459,17 @@ The tests cover:
 - Save RAM and RTC state are not persisted in the browser
 - The boot ROM is not executed; the machine starts directly at `0x0100`
 - The GPU and timer have not been tested against complete cycle-accuracy test ROMs
-- The ROM path is currently hardcoded in `jsGB.js`
-- `fileread.js` uses synchronous `XMLHttpRequest`, which is an older browser technique
+- Selected ROM data is only kept for the current browser tab
 
 ## Further Development
 
 Natural next steps include:
 
 1. Persistent save files using `localStorage`
-2. A ROM selector in the user interface
-3. Audio/APU support
-4. More memory bank controllers, such as MBC1 and MBC5
-5. Automated GPU and timer test ROMs
-6. Replace synchronous ROM loading with `fetch()` and `ArrayBuffer`
+2. Audio/APU support
+3. More memory bank controllers, such as MBC1 and MBC5
+4. Automated GPU and timer test ROMs
+5. Drag-and-drop ROM loading
 
 ## Background
 

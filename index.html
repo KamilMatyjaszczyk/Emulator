@@ -22,20 +22,43 @@
         #run {
             cursor: pointer;
         }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 12px;
+        }
+
+        #status {
+            min-height: 1.25em;
+            margin-top: 10px;
+            color: #333;
+        }
+
+        #status.error {
+            color: #b00020;
+        }
     </style>
 </head>
 <body>
 <canvas id="screen" width="160" height="144"></canvas>
-<br>
-<a id="reset">Reset</a> | <a id="run">Run</a>
+<div class="controls">
+    <label>
+        ROM:
+        <input id="rom-file" type="file" accept=".gb,.gbc,application/octet-stream">
+    </label>
+    <button id="reset" type="button">Reset</button>
+    <button id="run" type="button">Run</button>
+</div>
+<div id="status" role="status" aria-live="polite"></div>
 
-<script src="fileread.js?v=4"></script>
 <script src="GPU.js?v=5"></script>
 <script src="timer.js?v=4"></script>
 <script src="key.js?v=6"></script>
-<script src="MMU.js?v=6"></script>
+<script src="MMU.js?v=7"></script>
 <script src="z80.js?v=5"></script>
-<script src="jsGB.js?v=5"></script>
+<script src="jsGB.js?v=7"></script>
 
 </body>
 </html>

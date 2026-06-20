@@ -30,13 +30,11 @@ function makeROM(banks, type = 0x13, ramSize = 0x03) {
     }
     bytes[0x0147] = type;
     bytes[0x0149] = ramSize;
-    return Array.from(bytes, value => String.fromCharCode(value)).join('');
+    return bytes;
 }
 
-MMU._rom = makeROM(64);
-MMU._configureCartridge();
 MMU.reset();
-MMU._configureCartridge();
+MMU.load(makeROM(64));
 
 // Fixed and switchable ROM banks.
 assert.equal(MMU.rb(0x0100), 0x00);
@@ -94,8 +92,7 @@ MMU.wb(0xFF46, 0xC0);
 for (let i = 0; i < 0xA0; i++) assert.equal(GPU._oam[i], i);
 
 // MBC3 RTC registers and latch behavior.
-MMU._rom = makeROM(4, 0x10, 0x03);
-MMU._configureCartridge();
+MMU.load(makeROM(4, 0x10, 0x03));
 MMU.wb(0x0000, 0x0A);
 MMU.wb(0x4000, 0x0C);
 MMU.wb(0xA000, 0x40); // Halt clock.
