@@ -10,9 +10,11 @@ The project emulates the original Game Boy's Sharp LR35902 processor.
 
 ### 1. Choose a ROM
 
-Start the page and use the **ROM** file picker to select a local `.gb` or `.gbc` file. The ROM is read directly from your computer and is not uploaded anywhere.
+Start the page and use the **ROM** file picker to select a local Game Boy ROM. The ROM is read directly from your computer and is not uploaded anywhere.
 
 The repository does not require a `rom/` directory, and no ROM path is hardcoded in the source code.
+
+The file picker currently accepts both `.gb` and `.gbc` extensions, but the emulator only implements original monochrome Game Boy (DMG) hardware. Game Boy Color-only games are not supported. A dual-mode `.gbc` ROM may only work if it can run in its DMG compatibility mode and uses a supported cartridge controller.
 
 ### 2. Start a Local Web Server
 
@@ -52,6 +54,26 @@ Ctrl+Shift+R
 
 Click the page first if keyboard input is not being detected.
 
+## Save Files
+
+For cartridges that declare external RAM, the interface enables:
+
+- **Load Save:** imports a raw `.sav` file after the matching ROM has been selected.
+- **Download Save:** exports the current cartridge RAM as a local `.sav` file.
+
+These controls remain disabled when the selected cartridge does not declare external RAM.
+
+Recommended workflow:
+
+1. Select the ROM.
+2. Load its matching `.sav` file, if one exists.
+3. Press **Run** and save normally inside the game.
+4. Press **Download Save** before closing the tab.
+
+The imported file must have the exact RAM size declared by the ROM's cartridge header. Loading a save pauses and resets the emulated machine so the game can read the imported data from startup. Resetting the emulator preserves cartridge RAM, while selecting another ROM creates a new cartridge RAM buffer. Save data is not written to disk automatically, so it must be downloaded before the tab is closed.
+
+The current `.sav` format contains raw cartridge RAM only. MBC3 real-time clock state is not included.
+
 ## High-Level Architecture
 
 ```mermaid
@@ -89,7 +111,7 @@ The following diagram shows the high-level workflow when a game is loaded and ex
 sequenceDiagram
     participant UI as jsGB.js
     participant MMU as MMU.js
-    participant ROM as ROM file
+    participant ROM as Local ROM file
     participant CPU as z80.js
     participant GPU as GPU.js
     participant Canvas as HTML canvas
@@ -118,14 +140,15 @@ When the user chooses a file, `jsGB.loadROM()` reads it with the browser File AP
 
 ```javascript
 var buffer = await file.arrayBuffer();
-jsGB._romData = new Uint8Array(buffer);
+var romData = new Uint8Array(buffer);
+jsGB._romData = romData;
 ```
 
 The resulting bytes are stored in `jsGB._romData`. This allows Reset to restart the emulator without asking the user to select the file again.
 
-### 2. The Machine Is Reset
+### 2. The Machine Is Initialized
 
-`jsGB.reset()` begins by resetting the emulated hardware:
+After reading a newly selected ROM, `jsGB.loadROM()` initializes the emulated hardware:
 
 ```javascript
 GPU.reset();
@@ -143,13 +166,15 @@ Address `0x0100` is the beginning of the cartridge program after a real Game Boy
 
 ### 3. The ROM Is Loaded into the MMU
 
-After resetting the hardware, `jsGB.reset()` passes the selected bytes to the MMU:
+After resetting the hardware, `jsGB.loadROM()` passes the selected bytes to the MMU:
 
 ```javascript
-MMU.load(jsGB._romData);
+MMU.load(romData);
 ```
 
 `MMU.load()` stores the byte array in `MMU._rom`, allowing the CPU to read program instructions and game data through the Game Boy address space.
+
+Later presses of **Reset** do not call `MMU.load()` again. The selected ROM remains in memory, while CPU state, work RAM, video state, timers, and I/O are reset. Cartridge RAM is intentionally preserved.
 
 The MMU also reads the cartridge header, including addresses `0x0147` and `0x0149`. The header describes the cartridge's memory controller, number of ROM banks, and amount of external RAM.
 
@@ -210,11 +235,11 @@ Keyboard input, timer events, and completed frames can set interrupt flags. The 
 
 When the page has finished loading, `window.onload` in `jsGB.js` runs:
 
-1. Handlers are connected to the ROM selector, **Reset**, and **Run**.
+1. Handlers are connected to the ROM/save selectors and the **Load Save**, **Download Save**, **Reset**, and **Run** buttons.
 2. The page waits until the user selects a local ROM.
 3. The browser reads the file into a `Uint8Array`.
-4. `jsGB.reset()` resets the GPU, MMU, and CPU.
-5. The MMU loads the ROM bytes and reads the cartridge header.
+4. `jsGB.loadROM()` resets the GPU, MMU, and CPU.
+5. `jsGB.loadROM()` passes the ROM bytes to the MMU, which reads the cartridge header.
 6. The mapper, ROM banks, and RAM size are configured.
 7. The CPU is ready at address `0x0100`, as though the original boot ROM had already completed.
 
@@ -307,9 +332,9 @@ MMU.ww(address, value);  // Write a 16-bit value
 | `FF80–FFFE` | High RAM |
 | `FFFF` | Interrupt Enable register |
 
-### MBC3
+### Cartridge Controllers
 
-The project supports ROM-only cartridges and MBC3, which is used by the current test ROM.
+The project supports cartridges without a memory bank controller (`ROM ONLY`, `ROM+RAM`, and `ROM+RAM+BATTERY`) as well as MBC3 cartridge types.
 
 MBC3 support includes:
 
@@ -377,7 +402,7 @@ The timer contains the following Game Boy registers:
 
 `TIMER.inc()` is called after every CPU instruction. When an overflow occurs, `TMA` is copied into `TIMA`, and the MMU raises the timer interrupt.
 
-The timer implementation works for the project's ROM, but it is not a fully cycle-accurate model of every hardware detail.
+The timer implementation works for the games tested during development, but it is not a fully cycle-accurate model of every hardware detail.
 
 ## Input – `key.js`
 
@@ -406,8 +431,8 @@ The Game Boy has five interrupt sources:
 
 | File | Responsibility |
 |---|---|
-| `index.html` | User interface, ROM file picker, canvas, and script loading |
-| `jsGB.js` | Local ROM loading, Reset, Run/Pause, and the frame loop |
+| `index.html` | User interface, ROM/save file pickers, canvas, and script loading |
+| `jsGB.js` | Local ROM/save loading, save export, Reset, Run/Pause, and the frame loop |
 | `z80.js` | LR35902 CPU and opcode tables |
 | `MMU.js` | Memory map, cartridge banks, I/O, DMA, and RTC |
 | `GPU.js` | LCD timing and rendering |
@@ -450,13 +475,16 @@ The tests cover:
 - Echo RAM and 16-bit memory access
 - Joypad, serial communication, and OAM DMA
 - MBC3 RTC latching
+- Cartridge RAM export, import, size validation, and preservation across Reset
 
 ## Known Limitations
 
 - No audio/APU
-- Only ROM-only and MBC3 cartridge types are supported
+- No Game Boy Color hardware support
+- Only no-MBC and MBC3 cartridge types are supported
 - No link cable or real serial communication
-- Save RAM and RTC state are not persisted in the browser
+- Save RAM persistence is manual through `.sav` import/export
+- MBC3 RTC state is not included in exported `.sav` files
 - The boot ROM is not executed; the machine starts directly at `0x0100`
 - The GPU and timer have not been tested against complete cycle-accuracy test ROMs
 - Selected ROM data is only kept for the current browser tab

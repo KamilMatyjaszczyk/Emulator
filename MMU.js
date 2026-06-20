@@ -32,8 +32,9 @@ MMU = {
     },
 
     reset: function() {
+        if (MMU._hasRTC) MMU._updateRTC();
+
         MMU._wram.fill(0);
-        MMU._eram.fill(0);
         MMU._zram.fill(0);
         MMU._io.fill(0);
 
@@ -84,6 +85,25 @@ MMU = {
         MMU._configureCartridge();
     },
 
+    getSaveData: function() {
+        return MMU._eram.slice();
+    },
+
+    setSaveData: function(data) {
+        if (!ArrayBuffer.isView(data)) {
+            throw new TypeError('Save data must be a byte array');
+        }
+
+        if (data.byteLength !== MMU._eram.length) {
+            throw new Error(
+                'Wrong save size: expected ' + MMU._eram.length +
+                ' bytes, received ' + data.byteLength
+            );
+        }
+
+        MMU._eram.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+    },
+
     _configureCartridge: function() {
         MMU._cartridgeType = MMU._romByte(0x0147);
         MMU._romBanks = Math.max(2, Math.ceil(MMU._rom.length / 0x4000));
@@ -132,9 +152,18 @@ MMU = {
         }
 
         MMU._eram = new Uint8Array(MMU._ramSize);
+        MMU._eram.fill(0xFF);
         MMU._romBank = 1;
         MMU._ramBank = 0;
         MMU._ramEnabled = MMU._mapper === 'ROM' && MMU._ramSize > 0;
+        MMU._rtc.seconds = 0;
+        MMU._rtc.minutes = 0;
+        MMU._rtc.hours = 0;
+        MMU._rtc.days = 0;
+        MMU._rtc.halt = false;
+        MMU._rtc.carry = false;
+        MMU._rtc.latchValue = 0;
+        MMU._rtc.latched = null;
         MMU._rtc.lastUpdate = Date.now();
     },
 

@@ -35,6 +35,7 @@ function makeROM(banks, type = 0x13, ramSize = 0x03) {
 
 MMU.reset();
 MMU.load(makeROM(64));
+assert.equal(MMU._eram[0], 0xFF);
 
 // Fixed and switchable ROM banks.
 assert.equal(MMU.rb(0x0100), 0x00);
@@ -54,6 +55,22 @@ MMU.wb(0xA123, 0x5A);
 assert.equal(MMU.rb(0xA123), 0x5A);
 MMU.wb(0x4000, 0x06);
 assert.equal(MMU.rb(0xA123), 0xFF);
+
+// Cartridge RAM survives a machine reset and supports save import/export.
+MMU.wb(0x4000, 0x00);
+MMU.wb(0xA123, 0x5A);
+const exportedSave = MMU.getSaveData();
+assert.notStrictEqual(exportedSave, MMU._eram);
+assert.equal(exportedSave[0x123], 0x5A);
+MMU.reset();
+assert.equal(MMU._eram[0x123], 0x5A);
+MMU._eram[0x123] = 0;
+MMU.setSaveData(exportedSave);
+assert.equal(MMU._eram[0x123], 0x5A);
+assert.throws(
+    () => MMU.setSaveData(new Uint8Array(1)),
+    /Wrong save size/
+);
 
 // Work RAM and echo RAM mirror one another.
 MMU.wb(0xC321, 0x42);
