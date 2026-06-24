@@ -20,6 +20,7 @@ global.TIMER = {
     }
 };
 
+require('../APU.js');
 require('../key.js');
 require('../MMU.js');
 
@@ -53,6 +54,7 @@ MMU.wb(0x0000, 0x0A);
 MMU.wb(0x4000, 0x02);
 MMU.wb(0xA123, 0x5A);
 assert.equal(MMU.rb(0xA123), 0x5A);
+assert.equal(MMU._saveDirty, true);
 MMU.wb(0x4000, 0x06);
 assert.equal(MMU.rb(0xA123), 0xFF);
 
@@ -67,6 +69,7 @@ assert.equal(MMU._eram[0x123], 0x5A);
 MMU._eram[0x123] = 0;
 MMU.setSaveData(exportedSave);
 assert.equal(MMU._eram[0x123], 0x5A);
+assert.equal(MMU._saveDirty, true);
 assert.throws(
     () => MMU.setSaveData(new Uint8Array(1)),
     /Wrong save size/
@@ -102,6 +105,13 @@ MMU.wb(0xFF02, 0x81);
 assert.equal(MMU.rb(0xFF01), 0xFF);
 assert.equal(MMU.rb(0xFF02) & 0x80, 0);
 assert.equal(MMU._if & 0x08, 0x08);
+
+// Audio registers are routed to the APU.
+MMU.wb(0xFF26, 0x80);
+MMU.wb(0xFF12, 0xF0);
+MMU.wb(0xFF14, 0x80);
+assert.equal(APU._channels[0].active, true);
+assert.equal(MMU.rb(0xFF26) & 0x01, 0x01);
 
 // OAM DMA copies 160 bytes.
 for (let i = 0; i < 0xA0; i++) MMU.wb(0xC000 + i, i);

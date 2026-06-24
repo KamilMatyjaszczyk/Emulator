@@ -56,23 +56,37 @@ Click the page first if keyboard input is not being detected.
 
 ## Save Files
 
-For cartridges that declare external RAM, the interface enables:
+For cartridges that declare external RAM, save data is stored automatically in
+the browser:
 
-- **Load Save:** imports a raw `.sav` file after the matching ROM has been selected.
+- When a game changes cartridge RAM, the emulator marks it for saving.
+- Changed RAM is copied to `localStorage` while the emulator runs and when it is
+  paused or the page is closed.
+- Selecting the same ROM later restores its browser save automatically.
+- A SHA-256 hash of the ROM identifies the save, so files with similar names do
+  not share progress accidentally.
+
+The ROM still has to be selected again after opening a new tab because browsers
+do not allow a page to reopen arbitrary local files automatically.
+
+The interface also provides manual backup controls:
+
+- **Load Save:** imports a raw `.sav` file and immediately copies it to browser
+  storage.
 - **Download Save:** exports the current cartridge RAM as a local `.sav` file.
+- **Delete Browser Save:** removes the stored progress for the selected ROM and
+  starts it with empty cartridge RAM.
 
-These controls remain disabled when the selected cartridge does not declare external RAM.
+These controls remain disabled when the selected cartridge does not declare
+external RAM. An imported file must have the exact RAM size declared by the
+ROM's cartridge header. Loading a save pauses and resets the emulated machine so
+the game can read the imported data from startup. Resetting the emulator
+preserves cartridge RAM.
 
-Recommended workflow:
-
-1. Select the ROM.
-2. Load its matching `.sav` file, if one exists.
-3. Press **Run** and save normally inside the game.
-4. Press **Download Save** before closing the tab.
-
-The imported file must have the exact RAM size declared by the ROM's cartridge header. Loading a save pauses and resets the emulated machine so the game can read the imported data from startup. Resetting the emulator preserves cartridge RAM, while selecting another ROM creates a new cartridge RAM buffer. Save data is not written to disk automatically, so it must be downloaded before the tab is closed.
-
-The current `.sav` format contains raw cartridge RAM only. MBC3 real-time clock state is not included.
+Both browser saves and downloaded `.sav` files contain raw cartridge RAM only.
+MBC3 real-time clock state is not included. Browser saves belong to the current
+site origin, so clearing browser site data or changing the host/port can make
+them unavailable. Downloaded `.sav` files remain useful as portable backups.
 
 ## High-Level Architecture
 
@@ -81,10 +95,13 @@ flowchart LR
     UI[index.html / jsGB.js] --> CPU[z80.js<br>LR35902 CPU]
     CPU --> MMU[MMU.js<br>memory map and MBC3]
     MMU --> ROM[Game Boy ROM]
+    UI --> STORAGE[Browser localStorage<br>automatic cartridge saves]
     MMU --> GPU[GPU.js<br>LCD and graphics]
+    MMU --> APU[APU.js<br>pulse audio channels]
     MMU --> TIMER[timer.js]
     MMU --> KEY[key.js]
     GPU --> CANVAS[HTML canvas<br>160 × 144]
+    APU --> AUDIO[Web Audio API]
     TIMER --> IRQ[Interrupt flags]
     KEY --> IRQ
     GPU --> IRQ
@@ -98,8 +115,10 @@ The components communicate through global objects because the project does not u
 The architecture can roughly be divided into three layers:
 
 1. **Control:** `index.html` and `jsGB.js` start, stop, and reset the emulator.
-2. **Emulated hardware:** `z80.js`, `MMU.js`, `GPU.js`, `timer.js`, and `key.js` imitate the hardware components of a Game Boy.
-3. **Data and display:** The ROM file contains the game program, while the HTML canvas displays the image produced by the GPU.
+2. **Emulated hardware:** `z80.js`, `MMU.js`, `GPU.js`, `APU.js`,
+   `timer.js`, and `key.js` imitate the hardware components of a Game Boy.
+3. **Data and output:** The ROM contains the game program, the canvas displays
+   the GPU image, and the Web Audio API plays the APU output.
 
 The CPU is the active component that executes the game's instructions. The MMU connects the CPU to the rest of the machine. Whenever the CPU accesses a memory address, the MMU determines whether that address refers to ROM, RAM, graphics, the timer, input, or another I/O register.
 
@@ -114,6 +133,7 @@ sequenceDiagram
     participant ROM as Local ROM file
     participant CPU as z80.js
     participant GPU as GPU.js
+    participant APU as APU.js
     participant Canvas as HTML canvas
 
     UI->>ROM: file.arrayBuffer()
@@ -129,6 +149,7 @@ sequenceDiagram
         CPU->>MMU: Optional memory write
         MMU->>GPU: VRAM, OAM, or LCD register data
         CPU->>GPU: Advance by the instruction's clock cycles
+        CPU->>APU: Advance the audio frame sequencer
         GPU->>GPU: Build a scanline from tiles and sprites
     end
     GPU->>Canvas: Present the completed frame during VBlank
@@ -235,13 +256,16 @@ Keyboard input, timer events, and completed frames can set interrupt flags. The 
 
 When the page has finished loading, `window.onload` in `jsGB.js` runs:
 
-1. Handlers are connected to the ROM/save selectors and the **Load Save**, **Download Save**, **Reset**, and **Run** buttons.
+1. Handlers are connected to the ROM/save selectors and the **Load Save**,
+   **Download Save**, **Delete Browser Save**, **Reset**, and **Run** buttons.
 2. The page waits until the user selects a local ROM.
 3. The browser reads the file into a `Uint8Array`.
-4. `jsGB.loadROM()` resets the GPU, MMU, and CPU.
-5. `jsGB.loadROM()` passes the ROM bytes to the MMU, which reads the cartridge header.
-6. The mapper, ROM banks, and RAM size are configured.
-7. The CPU is ready at address `0x0100`, as though the original boot ROM had already completed.
+4. `jsGB.loadROM()` calculates a hash that uniquely identifies the ROM.
+5. `jsGB.loadROM()` resets the GPU, MMU, and CPU.
+6. `jsGB.loadROM()` passes the ROM bytes to the MMU, which reads the cartridge header.
+7. The mapper, ROM banks, and RAM size are configured.
+8. If browser storage contains a matching save, it is copied into cartridge RAM.
+9. The CPU is ready at address `0x0100`, as though the original boot ROM had already completed.
 
 The boot ROM is therefore not emulated. CPU registers and selected hardware registers are initialized directly to the values the machine normally has after startup.
 
@@ -402,6 +426,28 @@ The timer contains the following Game Boy registers:
 
 `TIMER.inc()` is called after every CPU instruction. When an overflow occurs, `TMA` is copied into `TIMA`, and the MMU raises the timer interrupt.
 
+## Audio – `APU.js`
+
+The first audio implementation supports Game Boy pulse channels 1 and 2. Sound
+register accesses from `FF10` through `FF3F` are routed by the MMU to the APU.
+Pressing **Run** creates or resumes a browser `AudioContext`; pausing the
+emulator suspends it.
+
+The implemented pulse-channel behavior includes:
+
+- Channel triggering through `NR14` and `NR24`
+- The four Game Boy duty-cycle settings
+- The 11-bit period-to-frequency conversion
+- Initial volume and volume envelopes
+- Length counters
+- Master volume and basic `NR51` output routing
+- `NR52` APU power and channel status
+
+The CPU advances the APU frame sequencer using the clock cycles consumed by each
+instruction. Web Audio oscillators generate the final waveform. This is enough
+for recognizable basic music and tones, but it is not yet a complete or
+cycle-accurate Game Boy audio implementation.
+
 The timer implementation works for the games tested during development, but it is not a fully cycle-accurate model of every hardware detail.
 
 ## Input – `key.js`
@@ -432,14 +478,17 @@ The Game Boy has five interrupt sources:
 | File | Responsibility |
 |---|---|
 | `index.html` | User interface, ROM/save file pickers, canvas, and script loading |
-| `jsGB.js` | Local ROM/save loading, save export, Reset, Run/Pause, and the frame loop |
+| `jsGB.js` | Local ROM loading, automatic browser saves, `.sav` import/export, Reset, Run/Pause, and the frame loop |
 | `z80.js` | LR35902 CPU and opcode tables |
 | `MMU.js` | Memory map, cartridge banks, I/O, DMA, and RTC |
 | `GPU.js` | LCD timing and rendering |
+| `APU.js` | Pulse channels 1 and 2 and Web Audio output |
 | `timer.js` | DIV/TIMA/TMA/TAC |
 | `key.js` | Keyboard and joypad |
 | `tests/z80.test.js` | CPU regression tests |
 | `tests/mmu.test.js` | MMU, MBC3, and I/O tests |
+| `tests/apu.test.js` | Pulse-channel register and timing tests |
+| `tests/storage.test.js` | Automatic browser-save persistence tests |
 
 ## Tests
 
@@ -457,11 +506,25 @@ Run the MMU tests:
 node tests/mmu.test.js
 ```
 
+Run the browser storage tests:
+
+```bash
+node tests/storage.test.js
+```
+
+Run the APU tests:
+
+```bash
+node tests/apu.test.js
+```
+
 Expected output:
 
 ```text
 Z80 tests passed
 MMU tests passed
+Storage tests passed
+APU tests passed
 ```
 
 The tests cover:
@@ -476,15 +539,19 @@ The tests cover:
 - Joypad, serial communication, and OAM DMA
 - MBC3 RTC latching
 - Cartridge RAM export, import, size validation, and preservation across Reset
+- Automatic browser save encoding, storage, and restoration
+- Pulse-channel triggering, length timing, volume, and APU power control
 
 ## Known Limitations
 
-- No audio/APU
+- Audio currently supports only pulse channels 1 and 2
+- Channel 1 frequency sweep, wave channel 3, noise channel 4, and accurate
+  stereo mixing are not implemented
 - No Game Boy Color hardware support
 - Only no-MBC and MBC3 cartridge types are supported
 - No link cable or real serial communication
-- Save RAM persistence is manual through `.sav` import/export
 - MBC3 RTC state is not included in exported `.sav` files
+- Browser saves depend on `localStorage` for the current site origin
 - The boot ROM is not executed; the machine starts directly at `0x0100`
 - The GPU and timer have not been tested against complete cycle-accuracy test ROMs
 - Selected ROM data is only kept for the current browser tab
@@ -493,9 +560,9 @@ The tests cover:
 
 Natural next steps include:
 
-1. Persistent save files using `localStorage`
-2. Audio/APU support
-3. More memory bank controllers, such as MBC1 and MBC5
+1. Wave, noise, sweep, and more accurate audio mixing
+2. More memory bank controllers, such as MBC1 and MBC5
+3. MBC3 RTC persistence
 4. Automated GPU and timer test ROMs
 5. Drag-and-drop ROM loading
 

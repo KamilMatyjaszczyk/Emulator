@@ -108,6 +108,9 @@ Z80 = {
         if (typeof TIMER !== 'undefined' && typeof TIMER.inc === 'function') {
             TIMER.inc();
         }
+        if (typeof APU !== 'undefined' && typeof APU.step === 'function') {
+            APU.step(Z80._r.t);
+        }
     },
 
     _serviceInterrupt: function(pending) {

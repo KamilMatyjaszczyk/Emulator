@@ -2,6 +2,10 @@ jsGB = {
     _interval: null,
     _romData: null,
     _romName: '',
+    _romId: '',
+    _lastInternalSave: 0,
+    _internalSaveDelay: 1000,
+    _storagePrefix: 'jsgb.save.v1.',
 
     loadROM: async function(file) {
         jsGB.pause();
@@ -10,6 +14,7 @@ jsGB = {
         try {
             var buffer = await file.arrayBuffer();
             var romData = new Uint8Array(buffer);
+            var romId = await jsGB.createRomId(romData);
 
             GPU.reset();
             MMU.reset();
@@ -18,13 +23,19 @@ jsGB = {
 
             jsGB._romData = romData;
             jsGB._romName = file.name;
+            jsGB._romId = romId;
+            var restored = jsGB.restoreInternalSave();
             document.getElementById('run').disabled = false;
             document.getElementById('reset').disabled = false;
             jsGB.updateSaveControls();
-            jsGB.setStatus(file.name + ' loaded. Press Run to start.');
+            jsGB.setStatus(
+                file.name + (restored ? ' and its browser save' : '') +
+                ' loaded. Press Run to start.'
+            );
         } catch (error) {
             jsGB._romData = null;
             jsGB._romName = '';
+            jsGB._romId = '';
             document.getElementById('run').disabled = true;
             document.getElementById('reset').disabled = true;
             jsGB.updateSaveControls();
@@ -49,6 +60,7 @@ jsGB = {
         do {
             Z80.exec();
         } while (Z80._clock.t < frameEnd);
+        jsGB.flushInternalSave(false);
     },
 
     run: function() {
@@ -58,6 +70,11 @@ jsGB = {
         }
 
         if (!jsGB._interval) {
+            if (typeof APU !== 'undefined') {
+                APU.resume().catch(function(error) {
+                    console.warn('Could not start browser audio:', error);
+                });
+            }
             jsGB._interval = setInterval(jsGB.frame, 1000 / 60);
             document.getElementById('run').textContent = 'Pause';
             jsGB.setStatus('Running ' + jsGB._romName);
@@ -75,6 +92,8 @@ jsGB = {
 
         var runButton = document.getElementById('run');
         if (runButton) runButton.textContent = 'Run';
+        if (typeof APU !== 'undefined') APU.suspend();
+        jsGB.flushInternalSave(true);
     },
 
     setStatus: function(message, isError) {
@@ -131,8 +150,118 @@ jsGB = {
         jsGB.pause();
         const data = new Uint8Array(await file.arrayBuffer());
         MMU.setSaveData(data);
+        jsGB.flushInternalSave(true);
         jsGB.reset();
-        jsGB.setStatus(file.name + ' loaded. Press Run to continue.');
+        jsGB.setStatus(
+            file.name + ' loaded and stored in this browser. Press Run to continue.'
+        );
+    },
+
+    createRomId: async function(data) {
+        if (window.crypto && window.crypto.subtle) {
+            var exactBuffer = data.buffer.slice(
+                data.byteOffset, data.byteOffset + data.byteLength);
+            var digest = await window.crypto.subtle.digest('SHA-256', exactBuffer);
+            return Array.from(new Uint8Array(digest), function(byte) {
+                return byte.toString(16).padStart(2, '0');
+            }).join('');
+        }
+
+        // Stable fallback for browsers without SubtleCrypto.
+        var hash = 2166136261;
+        for (var i = 0; i < data.length; i++) {
+            hash ^= data[i];
+            hash = Math.imul(hash, 16777619);
+        }
+        return data.length.toString(16) + '-' + (hash >>> 0).toString(16);
+    },
+
+    _bytesToBase64: function(data) {
+        var binary = '';
+        var chunkSize = 0x8000;
+        for (var offset = 0; offset < data.length; offset += chunkSize) {
+            binary += String.fromCharCode.apply(
+                null, data.subarray(offset, offset + chunkSize));
+        }
+        return btoa(binary);
+    },
+
+    _base64ToBytes: function(encoded) {
+        var binary = atob(encoded);
+        var data = new Uint8Array(binary.length);
+        for (var i = 0; i < binary.length; i++) {
+            data[i] = binary.charCodeAt(i);
+        }
+        return data;
+    },
+
+    flushInternalSave: function(force) {
+        if (!jsGB._romId || !MMU._eram.length || !MMU._saveDirty) return false;
+
+        var now = Date.now();
+        if (!force && now - jsGB._lastInternalSave < jsGB._internalSaveDelay) {
+            return false;
+        }
+
+        try {
+            var record = {
+                version: 1,
+                size: MMU._eram.length,
+                updatedAt: now,
+                data: jsGB._bytesToBase64(MMU.getSaveData())
+            };
+            localStorage.setItem(
+                jsGB._storagePrefix + jsGB._romId,
+                JSON.stringify(record)
+            );
+            MMU._saveDirty = false;
+            jsGB._lastInternalSave = now;
+            return true;
+        } catch (error) {
+            console.warn('Could not store save RAM in the browser:', error);
+            return false;
+        }
+    },
+
+    restoreInternalSave: function() {
+        if (!jsGB._romId || !MMU._eram.length) return false;
+
+        try {
+            var value = localStorage.getItem(jsGB._storagePrefix + jsGB._romId);
+            if (!value) return false;
+
+            var record = JSON.parse(value);
+            var data = jsGB._base64ToBytes(record.data);
+            if (record.version !== 1 ||
+                record.size !== MMU._eram.length ||
+                data.length !== MMU._eram.length) {
+                throw new Error('Stored save size does not match this cartridge');
+            }
+
+            MMU.setSaveData(data);
+            MMU._saveDirty = false;
+            return true;
+        } catch (error) {
+            console.warn('Could not restore browser save:', error);
+            return false;
+        }
+    },
+
+    clearInternalSave: function() {
+        if (!jsGB._romId || !MMU._eram.length) return;
+        if (!window.confirm('Delete the browser save for this ROM?')) return;
+
+        jsGB.pause();
+        localStorage.removeItem(jsGB._storagePrefix + jsGB._romId);
+        MMU._eram.fill(0xFF);
+        MMU._saveDirty = false;
+        GPU.reset();
+        MMU.reset();
+        Z80.reset();
+        jsGB.setStatus(
+            'Browser save deleted for ' + jsGB._romName +
+            '. Press Run to start without saved progress.'
+        );
     },
 
     updateSaveControls: function() {
@@ -140,10 +269,12 @@ jsGB = {
         var saveInput = document.getElementById('save-file');
         var loadButton = document.getElementById('load-save');
         var downloadButton = document.getElementById('download-save');
+        var clearButton = document.getElementById('clear-save');
 
         if (saveInput) saveInput.disabled = !enabled;
         if (loadButton) loadButton.disabled = !enabled;
         if (downloadButton) downloadButton.disabled = !enabled;
+        if (clearButton) clearButton.disabled = !enabled;
     }
 };
 
@@ -184,4 +315,8 @@ window.onload = function() {
         }
     };
 
+    document.getElementById('clear-save').onclick = jsGB.clearInternalSave;
+    window.addEventListener('pagehide', function() {
+        jsGB.flushInternalSave(true);
+    });
 };

@@ -19,6 +19,7 @@ MMU = {
     _ramSize: 0,
     _mapper: 'ROM',
     _hasRTC: false,
+    _saveDirty: false,
     _rtc: {
         seconds: 0,
         minutes: 0,
@@ -67,6 +68,7 @@ MMU = {
         }
 
         if (typeof KEY !== 'undefined') KEY.reset();
+        if (typeof APU !== 'undefined') APU.reset();
     },
 
     load: function(data) {
@@ -102,6 +104,7 @@ MMU = {
         }
 
         MMU._eram.set(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        MMU._saveDirty = true;
     },
 
     _configureCartridge: function() {
@@ -153,6 +156,7 @@ MMU = {
 
         MMU._eram = new Uint8Array(MMU._ramSize);
         MMU._eram.fill(0xFF);
+        MMU._saveDirty = false;
         MMU._romBank = 1;
         MMU._ramBank = 0;
         MMU._ramEnabled = MMU._mapper === 'ROM' && MMU._ramSize > 0;
@@ -269,7 +273,10 @@ MMU = {
             }
 
             var ramIndex = MMU._ramAddress(addr);
-            if (ramIndex >= 0) MMU._eram[ramIndex] = val;
+            if (ramIndex >= 0 && MMU._eram[ramIndex] !== val) {
+                MMU._eram[ramIndex] = val;
+                MMU._saveDirty = true;
+            }
             return;
         }
 
@@ -322,6 +329,11 @@ MMU = {
         if (addr === 0xFF02) return MMU._io[0x02] | 0x7E;
         if (addr === 0xFF0F) return MMU._if | 0xE0;
 
+        if (addr >= 0xFF10 && addr <= 0xFF3F &&
+            typeof APU !== 'undefined') {
+            return APU.rb(addr);
+        }
+
         if (addr >= 0xFF40 && addr <= 0xFF4B) {
             var gpuValue = GPU.rb(addr);
             return gpuValue === undefined ? MMU._io[addr & 0x7F] : gpuValue;
@@ -357,6 +369,12 @@ MMU = {
 
         if (addr === 0xFF0F) {
             MMU._if = val & 0x1F;
+            return;
+        }
+
+        if (addr >= 0xFF10 && addr <= 0xFF3F &&
+            typeof APU !== 'undefined') {
+            APU.wb(addr, val);
             return;
         }
 
