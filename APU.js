@@ -7,6 +7,8 @@ APU = {
     _context: null,
     _masterGain: null,
     _pulseWaves: [],
+    _userVolume: 0.6,
+    _muted: false,
     _channels: [
         {
             oscillator: null,
@@ -58,6 +60,23 @@ APU = {
         if (APU._context && APU._context.state === 'running') {
             APU._context.suspend();
         }
+    },
+
+    setVolume: function(value) {
+        value = Number(value);
+        if (!isFinite(value)) return;
+        APU._userVolume = Math.max(0, Math.min(1, value));
+        APU._updateMasterGain();
+    },
+
+    setMuted: function(muted) {
+        APU._muted = !!muted;
+        APU._updateMasterGain();
+    },
+
+    toggleMuted: function() {
+        APU.setMuted(!APU._muted);
+        return APU._muted;
     },
 
     rb: function(addr) {
@@ -147,8 +166,9 @@ APU = {
         APU._context = new AudioContext();
         APU._pulseWaves = [];
         APU._masterGain = APU._context.createGain();
-        APU._masterGain.gain.value = 0.12;
+        APU._masterGain.gain.value = 0;
         APU._masterGain.connect(APU._context.destination);
+        APU._updateMasterGain();
 
         for (var i = 0; i < APU._channels.length; i++) {
             var oscillator = APU._context.createOscillator();
@@ -233,6 +253,18 @@ APU = {
     _updateAll: function() {
         APU._updateChannel(0);
         APU._updateChannel(1);
+    },
+
+    _updateMasterGain: function() {
+        if (!APU._masterGain) return;
+        var gain = APU._muted ? 0 : APU._userVolume * 0.2;
+        var parameter = APU._masterGain.gain;
+
+        if (APU._context && parameter.setTargetAtTime) {
+            parameter.setTargetAtTime(gain, APU._context.currentTime, 0.01);
+        } else {
+            parameter.value = gain;
+        }
     },
 
     _updateChannel: function(channelIndex) {

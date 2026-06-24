@@ -19,7 +19,8 @@
         }
 
         #reset,
-        #run {
+        #run,
+        #mute {
             cursor: pointer;
         }
 
@@ -58,16 +59,22 @@
     <button id="clear-save" type="button">Delete Browser Save</button>
     <button id="reset" type="button">Reset</button>
     <button id="run" type="button">Run</button>
+    <label>
+        Volume:
+        <input id="volume" type="range" min="0" max="100" value="60">
+        <output id="volume-value" for="volume">60%</output>
+    </label>
+    <button id="mute" type="button">Mute</button>
 </div>
 <div id="status" role="status" aria-live="polite"></div>
 
 <script src="GPU.js?v=5"></script>
 <script src="timer.js?v=4"></script>
 <script src="key.js?v=6"></script>
-<script src="APU.js?v=1"></script>
+<script src="APU.js?v=2"></script>
 <script src="MMU.js?v=11"></script>
 <script src="z80.js?v=6"></script>
-<script src="jsGB.js?v=11"></script>
+<script src="jsGB.js?v=12"></script>
 
 </body>
 </html>

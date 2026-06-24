@@ -54,6 +54,10 @@ Ctrl+Shift+R
 
 Click the page first if keyboard input is not being detected.
 
+The **Volume** slider controls the browser's master output level. **Mute**
+silences the emulator without changing the selected volume. Both settings are
+remembered in browser storage.
+
 ## Save Files
 
 For cartridges that declare external RAM, save data is stored automatically in
@@ -433,6 +437,10 @@ register accesses from `FF10` through `FF3F` are routed by the MMU to the APU.
 Pressing **Run** creates or resumes a browser `AudioContext`; pausing the
 emulator suspends it.
 
+The volume slider and mute button control a final Web Audio gain node after the
+emulated channels have been mixed. They do not write to the Game Boy's sound
+registers, so changing the browser volume cannot alter game behavior.
+
 The implemented pulse-channel behavior includes:
 
 - Channel triggering through `NR14` and `NR24`
@@ -541,6 +549,7 @@ The tests cover:
 - Cartridge RAM export, import, size validation, and preservation across Reset
 - Automatic browser save encoding, storage, and restoration
 - Pulse-channel triggering, length timing, volume, and APU power control
+- Browser master volume, mute, and saved audio preferences
 
 ## Known Limitations
 

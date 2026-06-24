@@ -6,6 +6,7 @@ jsGB = {
     _lastInternalSave: 0,
     _internalSaveDelay: 1000,
     _storagePrefix: 'jsgb.save.v1.',
+    _audioSettingsKey: 'jsgb.audio.v1',
 
     loadROM: async function(file) {
         jsGB.pause();
@@ -275,6 +276,43 @@ jsGB = {
         if (loadButton) loadButton.disabled = !enabled;
         if (downloadButton) downloadButton.disabled = !enabled;
         if (clearButton) clearButton.disabled = !enabled;
+    },
+
+    loadAudioSettings: function() {
+        try {
+            var saved = JSON.parse(
+                localStorage.getItem(jsGB._audioSettingsKey) || '{}');
+            if (typeof saved.volume === 'number') APU.setVolume(saved.volume);
+            if (typeof saved.muted === 'boolean') APU.setMuted(saved.muted);
+        } catch (error) {
+            console.warn('Could not load audio settings:', error);
+        }
+        jsGB.updateAudioControls();
+    },
+
+    saveAudioSettings: function() {
+        try {
+            localStorage.setItem(jsGB._audioSettingsKey, JSON.stringify({
+                volume: APU._userVolume,
+                muted: APU._muted
+            }));
+        } catch (error) {
+            console.warn('Could not store audio settings:', error);
+        }
+    },
+
+    updateAudioControls: function() {
+        var slider = document.getElementById('volume');
+        var output = document.getElementById('volume-value');
+        var muteButton = document.getElementById('mute');
+        var percent = Math.round(APU._userVolume * 100);
+
+        if (slider) slider.value = percent;
+        if (output) output.textContent = percent + '%';
+        if (muteButton) {
+            muteButton.textContent = APU._muted ? 'Unmute' : 'Mute';
+            muteButton.setAttribute('aria-pressed', APU._muted ? 'true' : 'false');
+        }
     }
 };
 
@@ -291,6 +329,7 @@ window.onload = function() {
     document.getElementById('run').disabled = true;
     document.getElementById('reset').disabled = true;
     jsGB.updateSaveControls();
+    jsGB.loadAudioSettings();
 
     GPU.reset();
     jsGB.setStatus('Choose a .gb or .gbc ROM file to begin.');
@@ -316,6 +355,19 @@ window.onload = function() {
     };
 
     document.getElementById('clear-save').onclick = jsGB.clearInternalSave;
+
+    document.getElementById('volume').oninput = function(event) {
+        APU.setVolume(Number(event.target.value) / 100);
+        jsGB.updateAudioControls();
+        jsGB.saveAudioSettings();
+    };
+
+    document.getElementById('mute').onclick = function() {
+        APU.toggleMuted();
+        jsGB.updateAudioControls();
+        jsGB.saveAudioSettings();
+    };
+
     window.addEventListener('pagehide', function() {
         jsGB.flushInternalSave(true);
     });

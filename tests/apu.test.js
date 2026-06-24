@@ -5,6 +5,19 @@ require('../APU.js');
 APU.reset();
 assert.equal(APU.rb(0xFF26) & 0x80, 0x80);
 
+// Browser-level volume and mute do not modify emulated APU registers.
+APU._masterGain = {gain: {value: 0}};
+APU._context = null;
+APU.setVolume(0.75);
+assert.equal(APU._userVolume, 0.75);
+assert.ok(Math.abs(APU._masterGain.gain.value - 0.15) < 0.000001);
+APU.setVolume(2);
+assert.equal(APU._userVolume, 1);
+APU.setMuted(true);
+assert.equal(APU._masterGain.gain.value, 0);
+assert.equal(APU.toggleMuted(), false);
+APU._masterGain = null;
+
 // Trigger pulse channel 1 with a 50% duty cycle and full volume.
 APU.wb(0xFF11, 0x80);
 APU.wb(0xFF12, 0xF0);
