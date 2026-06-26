@@ -78,6 +78,7 @@ jsGB = {
             }
             jsGB._interval = setInterval(jsGB.frame, 1000 / 60);
             document.getElementById('run').textContent = 'Pause';
+            document.getElementById('gameboy').classList.add('running');
             jsGB.setStatus('Running ' + jsGB._romName);
         } else {
             jsGB.pause();
@@ -93,6 +94,8 @@ jsGB = {
 
         var runButton = document.getElementById('run');
         if (runButton) runButton.textContent = 'Run';
+        var gameboy = document.getElementById('gameboy');
+        if (gameboy) gameboy.classList.remove('running');
         if (typeof APU !== 'undefined') APU.suspend();
         jsGB.flushInternalSave(true);
     },
@@ -310,9 +313,37 @@ jsGB = {
         if (slider) slider.value = percent;
         if (output) output.textContent = percent + '%';
         if (muteButton) {
-            muteButton.textContent = APU._muted ? 'Unmute' : 'Mute';
+            muteButton.textContent = APU._muted ? 'UNMUTE' : 'MUTE';
             muteButton.setAttribute('aria-pressed', APU._muted ? 'true' : 'false');
         }
+    },
+
+    bindGameControls: function() {
+        var buttons = document.querySelectorAll('[data-key]');
+
+        buttons.forEach(function(button) {
+            var release = function(event) {
+                KEY.release(button.dataset.key);
+                button.classList.remove('pressed');
+                if (event) event.preventDefault();
+            };
+
+            button.addEventListener('pointerdown', function(event) {
+                event.preventDefault();
+                button.setPointerCapture(event.pointerId);
+                KEY.press(button.dataset.key);
+                button.classList.add('pressed');
+            });
+            button.addEventListener('pointerup', release);
+            button.addEventListener('pointercancel', release);
+            button.addEventListener('lostpointercapture', release);
+        });
+    },
+
+    setAudioVolumePercent: function(percent) {
+        APU.setVolume(Math.max(0, Math.min(100, percent)) / 100);
+        jsGB.updateAudioControls();
+        jsGB.saveAudioSettings();
     }
 };
 
@@ -330,6 +361,7 @@ window.onload = function() {
     document.getElementById('reset').disabled = true;
     jsGB.updateSaveControls();
     jsGB.loadAudioSettings();
+    jsGB.bindGameControls();
 
     GPU.reset();
     jsGB.setStatus('Choose a .gb or .gbc ROM file to begin.');
@@ -357,9 +389,7 @@ window.onload = function() {
     document.getElementById('clear-save').onclick = jsGB.clearInternalSave;
 
     document.getElementById('volume').oninput = function(event) {
-        APU.setVolume(Number(event.target.value) / 100);
-        jsGB.updateAudioControls();
-        jsGB.saveAudioSettings();
+        jsGB.setAudioVolumePercent(Number(event.target.value));
     };
 
     document.getElementById('mute').onclick = function() {

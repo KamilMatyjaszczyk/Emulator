@@ -3,78 +3,813 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Emulator Interface</title>
+    <title>DMG-01 Emulator</title>
     <style>
+        :root {
+            --shell: #c7c4b7;
+            --shell-light: #ddd9ca;
+            --shell-shadow: #8e8b81;
+            --ink: #26242d;
+            --bezel: #4b4a57;
+            --bezel-line: #8e244d;
+            --bezel-blue: #252060;
+            --button: #272631;
+            --action: #8f174c;
+            --screen: #9aa56d;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            min-height: 100%;
+            background: #cbc6b8;
+        }
+
         body {
-            margin: 24px;
-            font: 16px sans-serif;
+            min-height: 100vh;
+            min-height: 100dvh;
+            margin: 0;
+            padding: 6px 16px 0;
+            color: var(--ink);
+            font-family: "Trebuchet MS", Arial, sans-serif;
+            background: #cbc6b8;
         }
 
-        #screen {
-            width: 480px;
-            height: 432px;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            border: 1px solid #333;
+        button,
+        input {
+            font: inherit;
         }
 
-        #reset,
-        #run,
-        #mute {
+        .app {
+            display: grid;
+            justify-items: center;
+            gap: 0;
+            width: min(100%, 980px);
+            margin: 0 auto;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: 345px 230px;
+            align-items: start;
+            gap: 30px;
+            padding-left: 48px;
+        }
+
+        .console-slot {
+            width: 345px;
+            height: 578px;
+        }
+
+        .utility-panel {
+            display: grid;
+            align-content: start;
+            gap: 10px;
+            width: 230px;
+            margin-top: 20px;
+            padding: 18px;
+            border: 1px solid #aaa69b;
+            border-radius: 16px;
+            background: rgb(255 255 255 / 72%);
+            box-shadow: 0 8px 24px rgb(49 43 35 / 10%);
+            backdrop-filter: blur(8px);
+        }
+
+        .utility-panel h2 {
+            margin: 0 0 4px;
+            color: #383541;
+            font-size: 0.88rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .file-control {
+            display: grid;
+            gap: 4px;
+            min-width: 0;
+            color: #5d5962;
+            font-size: 0.72rem;
+            font-weight: 800;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+        }
+
+        input[type="file"] {
+            width: 100%;
+            max-width: none;
+            padding: 6px;
+            border: 1px solid #bbb6aa;
+            border-radius: 9px;
+            color: #393640;
+            background: #f7f5ee;
+            font-size: 0.78rem;
+        }
+
+        .utility-button {
+            width: 100%;
+            min-height: 38px;
+            padding: 0 13px;
+            border: 1px solid #77737d;
+            border-radius: 9px;
+            color: #fff;
+            background: #4b4853;
+            box-shadow: 0 3px 0 #2b2931;
             cursor: pointer;
         }
 
-        .controls {
+        .utility-button:active:not(:disabled) {
+            transform: translateY(2px);
+            box-shadow: 0 1px 0 #2b2931;
+        }
+
+        button:disabled,
+        input:disabled {
+            cursor: not-allowed;
+            opacity: 0.45;
+        }
+
+        .gameboy {
+            position: relative;
+            width: 460px;
+            min-height: 770px;
+            padding: 27px 27px 38px;
+            overflow: visible;
+            border: 1px solid #aaa79c;
+            border-radius: 20px 20px 76px 20px;
+            background:
+                linear-gradient(100deg, transparent 0 45%, rgb(255 255 255 / 25%) 50%, transparent 55%),
+                linear-gradient(145deg, var(--shell-light), var(--shell) 45%, #aaa79c);
+            box-shadow:
+                inset 5px 5px 8px rgb(255 255 255 / 36%),
+                inset -7px -8px 10px rgb(80 77 69 / 22%),
+                0 26px 50px rgb(54 49 43 / 27%);
+            transform: scale(0.75);
+            transform-origin: top left;
+            margin-bottom: 0;
+        }
+
+        .side-volume {
+            position: absolute;
+            z-index: 5;
+            top: 86px;
+            left: -62px;
+            display: grid;
+            justify-items: center;
+            width: 62px;
+            padding: 9px 5px 10px;
+            border: 1px solid #8c8980;
+            border-right: 0;
+            border-radius: 14px 0 0 14px;
+            color: #56525d;
+            background: #b9b6aa;
+            box-shadow:
+                inset 2px 2px 3px rgb(255 255 255 / 35%),
+                inset -2px -2px 3px rgb(70 67 62 / 22%),
+                2px 3px 4px rgb(70 67 62 / 22%);
+            font: 900 0.55rem Arial, sans-serif;
+            letter-spacing: 0.08em;
+        }
+
+        .volume-stack {
+            display: grid;
+            justify-items: center;
+            gap: 6px;
+            width: 52px;
+        }
+
+        .side-volume label {
+            line-height: 1;
+        }
+
+        #volume {
+            display: block;
+            width: 28px;
+            height: 100px;
+            margin: 0;
+            accent-color: #29235f;
+            cursor: ns-resize;
+            writing-mode: vertical-lr;
+            direction: rtl;
+        }
+
+        #volume-value {
+            min-width: 30px;
+            font-variant-numeric: tabular-nums;
+            text-align: center;
+        }
+
+        .top-ridges {
+            position: absolute;
+            inset: 12px 0 auto;
+            height: 8px;
+            border-top: 2px solid rgb(104 101 95 / 30%);
+            border-bottom: 2px solid rgb(255 255 255 / 35%);
+        }
+
+        .power-controls {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-top: 12px;
+            justify-content: flex-end;
+            min-height: 28px;
+            margin: -4px 3px 7px;
+        }
+
+        .system-buttons {
+            display: flex;
+            gap: 7px;
+        }
+
+        .system-button {
+            padding: 4px 9px;
+            border: 0;
+            border-radius: 10px;
+            color: #5a5763;
+            background: #aaa79d;
+            box-shadow: inset 1px 1px 2px #e7e4d7, 1px 2px 2px #817e76;
+            font-size: 0.62rem;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            cursor: pointer;
+        }
+
+        .screen-bezel {
+            position: relative;
+            padding: 18px 14px 25px;
+            border-radius: 14px 14px 45px 14px;
+            background: linear-gradient(145deg, #5d5c68, #34333d);
+            box-shadow:
+                inset 3px 3px 5px rgb(255 255 255 / 12%),
+                inset -4px -4px 7px rgb(0 0 0 / 28%),
+                0 5px 3px rgb(93 90 84 / 30%);
+        }
+
+        .screen-stripes {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 11px;
+            color: #dddbe0;
+            font: 700 0.55rem Arial, sans-serif;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+
+        .screen-stripes::before,
+        .screen-stripes::after {
+            content: "";
+            height: 5px;
+            border-top: 2px solid var(--bezel-line);
+            border-bottom: 2px solid var(--bezel-blue);
+        }
+
+        .display-row {
+            display: block;
+        }
+
+        .battery {
+            position: absolute;
+            z-index: 2;
+            top: 50%;
+            left: 3px;
+            display: grid;
+            justify-items: center;
+            gap: 5px;
+            color: #dddbe0;
+            font: 700 0.48rem Arial, sans-serif;
+            text-align: center;
+            text-transform: uppercase;
+            transform: translateY(-25%);
+        }
+
+        .battery-light {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #5b1729;
+            box-shadow: inset 1px 1px 2px #270a12;
+        }
+
+        .gameboy.running .battery-light {
+            background: #e92d4f;
+            box-shadow: 0 0 8px #ff365b;
+        }
+
+        .lcd {
+            margin-left: 18px;
+            padding: 8px;
+            border-radius: 3px;
+            background: #777d59;
+            box-shadow:
+                inset 5px 5px 8px rgb(25 28 19 / 48%),
+                1px 1px 0 rgb(255 255 255 / 13%);
+        }
+
+        #screen {
+            display: block;
+            width: 100%;
+            aspect-ratio: 160 / 144;
+            background: var(--screen);
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        .brand {
+            margin: 15px 8px 0;
+            color: #29235f;
+            font-family: Arial, sans-serif;
+            font-size: 1rem;
+            font-style: italic;
+            font-weight: 900;
+            letter-spacing: -0.04em;
+        }
+
+        .brand span {
+            margin-left: 4px;
+            font-size: 0.58rem;
+            font-style: normal;
+            letter-spacing: 0.09em;
         }
 
         #status {
-            min-height: 1.25em;
-            margin-top: 10px;
-            color: #333;
+            min-height: 2.5em;
+            margin: 8px 7px 0;
+            color: #57545d;
+            font-size: 0.74rem;
+            line-height: 1.3;
         }
 
         #status.error {
-            color: #b00020;
+            color: #9f173f;
+        }
+
+        .play-controls {
+            display: grid;
+            grid-template-columns: 126px 1fr 142px;
+            align-items: center;
+            margin-top: 18px;
+        }
+
+        .dpad {
+            position: relative;
+            width: 126px;
+            height: 126px;
+        }
+
+        .dpad::before,
+        .dpad::after {
+            content: "";
+            position: absolute;
+            z-index: 0;
+            border-radius: 7px;
+            background: var(--button);
+            box-shadow:
+                inset 3px 3px 3px rgb(255 255 255 / 10%),
+                inset -3px -3px 3px rgb(0 0 0 / 38%),
+                3px 5px 4px rgb(70 66 61 / 35%);
+        }
+
+        .dpad::before {
+            inset: 0 42px;
+        }
+
+        .dpad::after {
+            inset: 42px 0;
+        }
+
+        .game-button {
+            border: 0;
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            cursor: pointer;
+        }
+
+        .direction {
+            position: absolute;
+            z-index: 1;
+            width: 42px;
+            height: 42px;
+            color: #111019;
+            background: transparent;
+            font-size: 0;
+        }
+
+        .direction::after {
+            content: "";
+            position: absolute;
+            width: 0;
+            height: 0;
+            border: 7px solid transparent;
+            opacity: 0.7;
+        }
+
+        .direction[data-key="up"] { top: 0; left: 42px; }
+        .direction[data-key="right"] { top: 42px; right: 0; }
+        .direction[data-key="down"] { bottom: 0; left: 42px; }
+        .direction[data-key="left"] { top: 42px; left: 0; }
+        .direction[data-key="up"]::after {
+            top: 8px; left: 14px; border-bottom-color: #0e0e13; border-top: 0;
+        }
+        .direction[data-key="right"]::after {
+            top: 14px; right: 8px; border-left-color: #0e0e13; border-right: 0;
+        }
+        .direction[data-key="down"]::after {
+            bottom: 8px; left: 14px; border-top-color: #0e0e13; border-bottom: 0;
+        }
+        .direction[data-key="left"]::after {
+            top: 14px; left: 8px; border-right-color: #0e0e13; border-left: 0;
+        }
+
+        .direction.pressed,
+        .direction:active {
+            background: rgb(0 0 0 / 14%);
+        }
+
+        .action-pad {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            padding: 12px 9px;
+            border-radius: 55px;
+            background: #aaa79c;
+            box-shadow: inset 2px 3px 4px #858279, inset -2px -2px 3px #dedbcf;
+            transform: rotate(-25deg);
+        }
+
+        .action-wrap {
+            display: grid;
+            justify-items: center;
+            gap: 6px;
+            color: #27215c;
+            font: 900 0.82rem Arial, sans-serif;
+        }
+
+        .action {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 35% 28%, #b32963, var(--action) 70%);
+            box-shadow:
+                inset 2px 2px 2px rgb(255 255 255 / 15%),
+                inset -3px -3px 3px rgb(53 5 29 / 35%),
+                2px 4px 3px rgb(75 65 66 / 42%);
+        }
+
+        .action:active,
+        .action.pressed {
+            transform: translateY(3px);
+            box-shadow: inset 2px 3px 5px rgb(53 5 29 / 55%);
+        }
+
+        .action-wrap span {
+            transform: rotate(25deg);
+        }
+
+        .meta-row {
+            display: flex;
+            justify-content: center;
+            gap: 18px;
+            margin-top: 16px;
+            transform: rotate(-25deg);
+        }
+
+        .meta-wrap {
+            display: grid;
+            justify-items: center;
+            gap: 5px;
+            color: #29235f;
+            font: 900 0.59rem Arial, sans-serif;
+            letter-spacing: 0.08em;
+        }
+
+        .meta {
+            width: 52px;
+            height: 14px;
+            border-radius: 10px;
+            background: #66636a;
+            box-shadow: inset 2px 2px 2px #89868b, 2px 3px 2px #88857c;
+        }
+
+        .meta:active,
+        .meta.pressed {
+            transform: translateY(2px);
+            box-shadow: inset 2px 2px 3px #35343a;
+        }
+
+        .meta-wrap span {
+            transform: rotate(25deg);
+        }
+
+        .lower-panel {
+            display: flex;
+            justify-content: flex-end;
+            align-items: end;
+            margin: 24px 8px 0;
+        }
+
+        #mute {
+            width: 52px;
+            margin-top: 2px;
+            padding: 5px 4px;
+            border: 0;
+            border-radius: 10px;
+            color: #55515b;
+            background: #aaa79e;
+            box-shadow: inset 1px 1px 2px #e2dfd3, 1px 2px 2px #7e7b74;
+            font-size: 0.62rem;
+            font-weight: 900;
+            cursor: pointer;
+        }
+
+        .speaker {
+            display: flex;
+            justify-content: center;
+            gap: 7px;
+            height: 80px;
+            transform: rotate(-25deg);
+        }
+
+        .speaker span {
+            width: 7px;
+            height: 68px;
+            border-radius: 8px;
+            background: #8f8c83;
+            box-shadow: inset 2px 1px 2px #69675f, 1px 1px 1px #e2dfd4;
+        }
+
+        .keyboard-hint {
+            margin: 5px 0 0;
+            padding-top: 11px;
+            border-top: 1px solid #c5c0b5;
+            color: #716d72;
+            font-size: 0.68rem;
+        }
+
+        .keyboard-hint h3 {
+            margin: 0 0 8px;
+            color: #4a4652;
+            font-size: 0.7rem;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+        }
+
+        .control-list {
+            display: grid;
+            gap: 6px;
+            margin: 0;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .control-row dt,
+        .control-row dd {
+            margin: 0;
+        }
+
+        .control-row dt {
+            color: #68646d;
+            font-weight: 700;
+        }
+
+        .keys {
+            display: flex;
+            justify-content: flex-end;
+            gap: 3px;
+        }
+
+        kbd {
+            min-width: 24px;
+            padding: 3px 6px;
+            border: 1px solid #a9a49a;
+            border-bottom-width: 2px;
+            border-radius: 5px;
+            color: #393640;
+            background: #f8f6ef;
+            box-shadow: 0 1px 1px rgb(40 36 32 / 12%);
+            font: 700 0.64rem Arial, sans-serif;
+            text-align: center;
+        }
+
+        @media (max-width: 760px) {
+            .workspace {
+                grid-template-columns: 345px;
+                justify-items: center;
+                gap: 18px;
+                padding-left: 48px;
+            }
+
+            .utility-panel {
+                width: 345px;
+                margin-top: 0;
+            }
+        }
+
+        @media (max-width: 520px) {
+            body {
+                padding: 4px 8px 0;
+            }
+
+            .utility-panel {
+                align-items: stretch;
+                width: min(100%, 345px);
+            }
+
+            .file-control {
+                width: 100%;
+            }
+
+            input[type="file"] {
+                max-width: none;
+            }
+
+            .gameboy {
+                min-height: 0;
+                padding: 22px 18px 30px;
+                margin-bottom: 0;
+            }
+
+            .workspace {
+                width: 100%;
+                grid-template-columns: minmax(0, 345px);
+                padding-left: 38px;
+            }
+
+            .console-slot {
+                width: 100%;
+                max-width: 345px;
+                height: 540px;
+            }
+
+            .side-volume {
+                top: 76px;
+                left: -54px;
+                width: 54px;
+                transform: scale(0.88);
+                transform-origin: right top;
+            }
+
+            .screen-bezel {
+                padding: 13px 8px 19px;
+            }
+
+            .display-row {
+                display: block;
+            }
+
+            .battery {
+                left: 1px;
+            }
+
+            .lcd {
+                margin-left: 14px;
+            }
+
+            .play-controls {
+                grid-template-columns: 126px 1fr 124px;
+            }
+
+            .action-pad {
+                gap: 10px;
+            }
+
+            .action {
+                width: 45px;
+                height: 45px;
+            }
         }
     </style>
 </head>
 <body>
-<canvas id="screen" width="160" height="144"></canvas>
-<div class="controls">
-    <label>
-        ROM:
-        <input id="rom-file" type="file" accept=".gb,.gbc,application/octet-stream">
-    </label>
-    <label>
-    Save:
-    <input id="save-file" type="file" accept=".sav">
-    </label>
+<main class="app">
+    <div class="workspace">
+    <div class="console-slot">
+    <section id="gameboy" class="gameboy" aria-label="Game Boy emulator">
+        <div class="top-ridges" aria-hidden="true"></div>
+        <div class="side-volume">
+            <div class="volume-stack">
+                <label for="volume">VOL</label>
+                <input id="volume" type="range" min="0" max="100" value="60"
+                       aria-label="Volume">
+                <output id="volume-value" for="volume">60%</output>
+                <button id="mute" type="button" aria-pressed="false">MUTE</button>
+            </div>
+        </div>
+        <div class="power-controls">
+            <div class="system-buttons">
+                <button id="reset" class="system-button" type="button">RESET</button>
+                <button id="run" class="system-button" type="button">RUN</button>
+            </div>
+        </div>
 
-    <button id="load-save" type="button">Load Save</button>
-    <button id="download-save" type="button">Download Save</button>
-    <button id="clear-save" type="button">Delete Browser Save</button>
-    <button id="reset" type="button">Reset</button>
-    <button id="run" type="button">Run</button>
-    <label>
-        Volume:
-        <input id="volume" type="range" min="0" max="100" value="60">
-        <output id="volume-value" for="volume">60%</output>
-    </label>
-    <button id="mute" type="button">Mute</button>
-</div>
-<div id="status" role="status" aria-live="polite"></div>
+        <div class="screen-bezel">
+            <div class="screen-stripes">Dot Matrix with Stereo Sound</div>
+            <div class="display-row">
+                <div class="battery">
+                    <span class="battery-light"></span>
+                    Battery
+                </div>
+                <div class="lcd">
+                    <canvas id="screen" width="160" height="144"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="brand">Nintendo <span>GAME BOY™</span></div>
+        <div id="status" role="status" aria-live="polite"></div>
+
+        <div class="play-controls">
+            <div class="dpad" aria-label="Directional pad">
+                <button class="game-button direction" data-key="up" type="button" aria-label="Up"></button>
+                <button class="game-button direction" data-key="right" type="button" aria-label="Right"></button>
+                <button class="game-button direction" data-key="down" type="button" aria-label="Down"></button>
+                <button class="game-button direction" data-key="left" type="button" aria-label="Left"></button>
+            </div>
+            <div></div>
+            <div class="action-pad" aria-label="Action buttons">
+                <div class="action-wrap">
+                    <button class="game-button action" data-key="b" type="button" aria-label="B"></button>
+                    <span>B</span>
+                </div>
+                <div class="action-wrap">
+                    <button class="game-button action" data-key="a" type="button" aria-label="A"></button>
+                    <span>A</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="meta-row" aria-label="Menu buttons">
+            <div class="meta-wrap">
+                <button class="game-button meta" data-key="select" type="button" aria-label="Select"></button>
+                <span>SELECT</span>
+            </div>
+            <div class="meta-wrap">
+                <button class="game-button meta" data-key="start" type="button" aria-label="Start"></button>
+                <span>START</span>
+            </div>
+        </div>
+
+        <div class="lower-panel">
+            <div class="speaker" aria-hidden="true">
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+        </div>
+    </section>
+    </div>
+
+    <section class="utility-panel" aria-label="ROM and save files">
+        <h2>Cartridge &amp; Save</h2>
+        <label class="file-control">
+            ROM file
+            <input id="rom-file" type="file" accept=".gb,.gbc,application/octet-stream">
+        </label>
+        <label class="file-control">
+            Save file
+            <input id="save-file" type="file" accept=".sav">
+        </label>
+        <button id="load-save" class="utility-button" type="button">Load Save</button>
+        <button id="download-save" class="utility-button" type="button">Download Save</button>
+        <button id="clear-save" class="utility-button" type="button">Delete Browser Save</button>
+        <section class="keyboard-hint" aria-labelledby="controls-title">
+            <h3 id="controls-title">Controls</h3>
+            <dl class="control-list">
+                <div class="control-row">
+                    <dt>Move</dt>
+                    <dd class="keys">
+                        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd>
+                    </dd>
+                </div>
+                <div class="control-row">
+                    <dt>A / B</dt>
+                    <dd class="keys"><kbd>Z</kbd><kbd>X</kbd></dd>
+                </div>
+                <div class="control-row">
+                    <dt>Start</dt>
+                    <dd class="keys"><kbd>Enter</kbd></dd>
+                </div>
+                <div class="control-row">
+                    <dt>Select</dt>
+                    <dd class="keys"><kbd>Space</kbd></dd>
+                </div>
+            </dl>
+        </section>
+    </section>
+    </div>
+</main>
 
 <script src="GPU.js?v=5"></script>
 <script src="timer.js?v=4"></script>
-<script src="key.js?v=6"></script>
+<script src="key.js?v=7"></script>
 <script src="APU.js?v=2"></script>
 <script src="MMU.js?v=11"></script>
 <script src="z80.js?v=6"></script>
-<script src="jsGB.js?v=12"></script>
-
+<script src="jsGB.js?v=13"></script>
 </body>
 </html>

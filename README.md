@@ -36,12 +36,6 @@ Python is only used to serve the files over HTTP. The emulator itself is written
 
 After selecting a ROM, press **Run** to start and **Pause** to stop the execution loop. **Reset** resets the machine while keeping the selected ROM loaded.
 
-If the browser shows an older version after a code change, use:
-
-```text
-Ctrl+Shift+R
-```
-
 ## Controls
 
 | Game Boy | Keyboard |
@@ -52,11 +46,16 @@ Ctrl+Shift+R
 | Start | `Enter` |
 | Select | `Space` |
 
-Click the page first if keyboard input is not being detected.
+The on-screen D-pad, A, B, Start, and Select controls also work with a mouse or
+touchscreen. Click the page first if keyboard input is not being detected.
 
-The **Volume** slider controls the browser's master output level. **Mute**
-silences the emulator without changing the selected volume. Both settings are
-remembered in browser storage.
+The vertical **Volume** slider high on the console's left edge controls the
+browser's master output level. Move it up or down to adjust the volume.
+**Mute/Unmute** sits directly beside the slider and silences the emulator
+without changing the selected volume. Both settings are remembered in browser storage.
+Run/Pause and Reset are placed on the console, while ROM and save-file
+management remains in the utility panel to its right. On narrow screens, the
+utility panel moves below the console.
 
 ## Save Files
 

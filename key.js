@@ -1,8 +1,16 @@
 KEY = {
-
-    //Enter er start, A er z
     _rows: [0x0F, 0x0F],
     _column: 0,
+    _buttons: {
+        right: {row: 1, mask: 0x01},
+        left: {row: 1, mask: 0x02},
+        up: {row: 1, mask: 0x04},
+        down: {row: 1, mask: 0x08},
+        a: {row: 0, mask: 0x01},
+        b: {row: 0, mask: 0x02},
+        select: {row: 0, mask: 0x04},
+        start: {row: 0, mask: 0x08}
+    },
 
     reset: function()
     {
@@ -23,38 +31,57 @@ KEY = {
         KEY._column = val & 0x30;
     },
 
+    press: function(name)
+    {
+        var button = KEY._buttons[name];
+        if (!button) return;
+
+        var wasReleased = KEY._rows[button.row] & button.mask;
+        KEY._rows[button.row] &= ~button.mask;
+        if (wasReleased && typeof MMU !== 'undefined') MMU._if |= 0x10;
+    },
+
+    release: function(name)
+    {
+        var button = KEY._buttons[name];
+        if (!button) return;
+        KEY._rows[button.row] |= button.mask;
+    },
+
+    _eventButton: function(e)
+    {
+        var byCode = {
+            ArrowRight: 'right',
+            ArrowLeft: 'left',
+            ArrowUp: 'up',
+            ArrowDown: 'down',
+            KeyZ: 'a',
+            KeyX: 'b',
+            Space: 'select',
+            Enter: 'start'
+        };
+        var byKeyCode = {
+            39: 'right', 37: 'left', 38: 'up', 40: 'down',
+            90: 'a', 88: 'b', 32: 'select', 13: 'start'
+        };
+        return byCode[e.code] || byKeyCode[e.keyCode];
+    },
+
     kdown: function(e)
     {
-        var before = KEY._rows[0] & KEY._rows[1];
-        switch(e.keyCode)
-        {
-            case 39: KEY._rows[1] &= 0xE; break;
-            case 37: KEY._rows[1] &= 0xD; break;
-            case 38: KEY._rows[1] &= 0xB; break;
-            case 40: KEY._rows[1] &= 0x7; break;
-            case 90: KEY._rows[0] &= 0xE; break;
-            case 88: KEY._rows[0] &= 0xD; break;
-            case 32: KEY._rows[0] &= 0xB; break;
-            case 13: KEY._rows[0] &= 0x7; break;
-        }
-        if ((KEY._rows[0] & KEY._rows[1]) !== before && typeof MMU !== 'undefined') {
-            MMU._if |= 0x10;
-        }
+        var name = KEY._eventButton(e);
+        if (!name) return;
+        if (e.target && /INPUT|BUTTON/.test(e.target.tagName)) return;
+        e.preventDefault();
+        KEY.press(name);
     },
 
     kup: function(e)
     {
-        switch(e.keyCode)
-        {
-            case 39: KEY._rows[1] |= 0x1; break;
-            case 37: KEY._rows[1] |= 0x2; break;
-            case 38: KEY._rows[1] |= 0x4; break;
-            case 40: KEY._rows[1] |= 0x8; break;
-            case 90: KEY._rows[0] |= 0x1; break;
-            case 88: KEY._rows[0] |= 0x2; break;
-            case 32: KEY._rows[0] |= 0x4; break;
-            case 13: KEY._rows[0] |= 0x8; break;
-        }
+        var name = KEY._eventButton(e);
+        if (!name) return;
+        e.preventDefault();
+        KEY.release(name);
     }
 };
 
