@@ -46,14 +46,16 @@ GPU = {
         GPU._statControl = 0;
         GPU._lycMatch = false;
 
-        GPU._switchbg = 0;
+        // The emulator starts after the DMG boot ROM. These values mirror the
+        // important LCD defaults normally established by that boot sequence.
+        GPU._switchbg = 1;
         GPU._switchobj = 0;
         GPU._objsize = 0;
         GPU._bgmap = 0;
-        GPU._bgtile = 0;
+        GPU._bgtile = 1;
         GPU._switchwin = 0;
         GPU._winmap = 0;
-        GPU._switchlcd = 0;
+        GPU._switchlcd = 1;
         GPU._scx = 0;
         GPU._scy = 0;
         GPU._wx = 0;
@@ -82,6 +84,10 @@ GPU = {
         GPU._setPalette('bg', 0xFC);
         GPU._setPalette('obj0', 0xFF);
         GPU._setPalette('obj1', 0xFF);
+        GPU._bgPaletteValue = 0xFC;
+        GPU._obj0PaletteValue = 0xFF;
+        GPU._obj1PaletteValue = 0xFF;
+        GPU._mode = 2;
 
         var canvas = document.getElementById('screen');
         if (canvas && canvas.getContext) {
@@ -353,16 +359,22 @@ GPU = {
                     GPU._mode = 0;
                     GPU._modeclock = 0;
                     GPU._line = 0;
+                    GPU._clearScreen();
+                    GPU._present();
                     GPU._checkLYC();
                 } else if (!wasEnabled) {
                     GPU._modeclock = 0;
                     GPU._line = 0;
                     GPU._setMode(2);
                     GPU._checkLYC();
+                } else {
+                    GPU._present();
                 }
                 break;
             case 0xFF41:
+                var oldControl = GPU._statControl;
                 GPU._statControl = val & 0x78;
+                GPU._checkSTATEnable(oldControl);
                 break;
             case 0xFF42: GPU._scy = val; break;
             case 0xFF43: GPU._scx = val; break;
@@ -403,5 +415,17 @@ GPU = {
                 obj.prio = val & 0x80 ? 1 : 0;
                 break;
         }
+    },
+
+    _checkSTATEnable: function(oldControl) {
+        var newlyEnabled = GPU._statControl & ~oldControl;
+
+        if ((newlyEnabled & 0x40) && GPU._line === GPU._lyc) {
+            MMU._if |= 0x02;
+        }
+
+        if ((newlyEnabled & 0x08) && GPU._mode === 0) MMU._if |= 0x02;
+        if ((newlyEnabled & 0x10) && GPU._mode === 1) MMU._if |= 0x02;
+        if ((newlyEnabled & 0x20) && GPU._mode === 2) MMU._if |= 0x02;
     }
 };

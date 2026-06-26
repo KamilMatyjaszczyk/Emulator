@@ -1,4 +1,4 @@
-// Game Boy memory map and MBC3 cartridge controller.
+// Game Boy memory map and cartridge controllers.
 MMU = {
     _inbios: 0,
     _bios: [],
@@ -18,6 +18,13 @@ MMU = {
     _ramBanks: 0,
     _ramSize: 0,
     _mapper: 'ROM',
+    _mbc1RomBankLow: 1,
+    _mbc1BankHigh: 0,
+    _mbc1Mode: 0,
+    _mbc5RomBank: 1,
+    _serialExternalActive: false,
+    _serialExternalCycles: 0,
+    _serialExternalTimeout: 4096,
     _hasRTC: false,
     _saveDirty: false,
     _rtc: {
@@ -43,7 +50,13 @@ MMU = {
         MMU._if = 0;
         MMU._romBank = 1;
         MMU._ramBank = 0;
-        MMU._ramEnabled = false;
+        MMU._ramEnabled = MMU._mapper === 'ROM' && MMU._ramSize > 0;
+        MMU._mbc1RomBankLow = 1;
+        MMU._mbc1BankHigh = 0;
+        MMU._mbc1Mode = 0;
+        MMU._mbc5RomBank = 1;
+        MMU._serialExternalActive = false;
+        MMU._serialExternalCycles = 0;
         MMU._inbios = 0;
         MMU._rtc.latchValue = 0;
         MMU._rtc.latched = null;
@@ -91,6 +104,22 @@ MMU = {
         return MMU._eram.slice();
     },
 
+    step: function(cycles) {
+        if (!MMU._serialExternalActive) return;
+
+        MMU._serialExternalCycles += cycles || 0;
+        if (MMU._serialExternalCycles < MMU._serialExternalTimeout) return;
+
+        // No link partner is emulated. Let external-clock transfers time out
+        // after a short delay instead of completing instantly or hanging
+
+        MMU._io[0x01] = 0xFE;
+        MMU._io[0x02] &= 0x7F;
+        MMU._if |= 0x08;
+        MMU._serialExternalActive = false;
+        MMU._serialExternalCycles = 0;
+    },
+
     setSaveData: function(data) {
         if (!ArrayBuffer.isView(data)) {
             throw new TypeError('Save data must be a byte array');
@@ -113,6 +142,14 @@ MMU = {
 
         if (MMU._cartridgeType >= 0x0F && MMU._cartridgeType <= 0x13) {
             MMU._mapper = 'MBC3';
+        } else if (MMU._cartridgeType >= 0x19 && MMU._cartridgeType <= 0x1E) {
+            MMU._mapper = 'MBC5';
+        } else if (
+            MMU._cartridgeType === 0x01 ||
+            MMU._cartridgeType === 0x02 ||
+            MMU._cartridgeType === 0x03
+        ) {
+            MMU._mapper = 'MBC1';
         } else if (
             MMU._cartridgeType === 0x00 ||
             MMU._cartridgeType === 0x08 ||
@@ -159,6 +196,10 @@ MMU = {
         MMU._saveDirty = false;
         MMU._romBank = 1;
         MMU._ramBank = 0;
+        MMU._mbc1RomBankLow = 1;
+        MMU._mbc1BankHigh = 0;
+        MMU._mbc1Mode = 0;
+        MMU._mbc5RomBank = 1;
         MMU._ramEnabled = MMU._mapper === 'ROM' && MMU._ramSize > 0;
         MMU._rtc.seconds = 0;
         MMU._rtc.minutes = 0;
@@ -183,11 +224,12 @@ MMU = {
             if (MMU._inbios && addr < 0x0100) {
                 return MMU._bios[addr] === undefined ? 0xFF : MMU._bios[addr];
             }
-            return MMU._romByte(addr);
+            var fixedBank = MMU._fixedROMBank();
+            return MMU._romByte(fixedBank * 0x4000 + addr);
         }
 
         if (addr < 0x8000) {
-            var bank = MMU._romBank % MMU._romBanks;
+            var bank = MMU._switchableROMBank();
             return MMU._romByte(bank * 0x4000 + (addr - 0x4000));
         }
 
@@ -234,13 +276,31 @@ MMU = {
         val &= 0xFF;
 
         if (addr < 0x2000) {
-            if (MMU._mapper === 'MBC3') {
+            if (
+                MMU._mapper === 'MBC1' ||
+                MMU._mapper === 'MBC3' ||
+                MMU._mapper === 'MBC5'
+            ) {
                 MMU._ramEnabled = (val & 0x0F) === 0x0A;
             }
             return;
         }
 
         if (addr < 0x4000) {
+            if (MMU._mapper === 'MBC5') {
+                if (addr < 0x3000) {
+                    MMU._mbc5RomBank = (MMU._mbc5RomBank & 0x100) | val;
+                } else {
+                    MMU._mbc5RomBank = (MMU._mbc5RomBank & 0xFF) |
+                        ((val & 0x01) << 8);
+                }
+                MMU._romBank = MMU._switchableROMBank();
+            }
+            if (MMU._mapper === 'MBC1') {
+                MMU._mbc1RomBankLow = val & 0x1F;
+                if (MMU._mbc1RomBankLow === 0) MMU._mbc1RomBankLow = 1;
+                MMU._romBank = MMU._switchableROMBank();
+            }
             if (MMU._mapper === 'MBC3') {
                 MMU._romBank = val & 0x7F;
                 if (MMU._romBank === 0) MMU._romBank = 1;
@@ -249,11 +309,24 @@ MMU = {
         }
 
         if (addr < 0x6000) {
+            if (MMU._mapper === 'MBC5') {
+                MMU._ramBank = val & (MMU._isMBC5Rumble() ? 0x07 : 0x0F);
+            }
+            if (MMU._mapper === 'MBC1') {
+                MMU._mbc1BankHigh = val & 0x03;
+                MMU._ramBank = MMU._mbc1Mode ? MMU._mbc1BankHigh : 0;
+                MMU._romBank = MMU._switchableROMBank();
+            }
             if (MMU._mapper === 'MBC3') MMU._ramBank = val & 0x0F;
             return;
         }
 
         if (addr < 0x8000) {
+            if (MMU._mapper === 'MBC1') {
+                MMU._mbc1Mode = val & 0x01;
+                MMU._ramBank = MMU._mbc1Mode ? MMU._mbc1BankHigh : 0;
+                MMU._romBank = MMU._switchableROMBank();
+            }
             if (MMU._mapper === 'MBC3') MMU._latchRTC(val);
             return;
         }
@@ -353,11 +426,19 @@ MMU = {
 
         if (addr === 0xFF02) {
             MMU._io[0x02] = val & 0x81;
-            if (val & 0x80) {
+            if ((val & 0x81) === 0x81) {
                 // No link cable: complete an internal-clock transfer immediately.
                 MMU._io[0x01] = 0xFF;
                 MMU._io[0x02] &= 0x7F;
                 MMU._if |= 0x08;
+                MMU._serialExternalActive = false;
+                MMU._serialExternalCycles = 0;
+            } else if ((val & 0x81) === 0x80) {
+                MMU._serialExternalActive = true;
+                MMU._serialExternalCycles = 0;
+            } else {
+                MMU._serialExternalActive = false;
+                MMU._serialExternalCycles = 0;
             }
             return;
         }
@@ -410,6 +491,33 @@ MMU = {
 
         var index = MMU._ramBank * 0x2000 + offset;
         return index < MMU._eram.length ? index : -1;
+    },
+
+    _fixedROMBank: function() {
+        if (MMU._mapper !== 'MBC1') return 0;
+        if (MMU._mbc1Mode === 0) return 0;
+
+        return (MMU._mbc1BankHigh << 5) % MMU._romBanks;
+    },
+
+    _switchableROMBank: function() {
+        var bank;
+
+        if (MMU._mapper === 'MBC1') {
+            bank = (MMU._mbc1BankHigh << 5) | MMU._mbc1RomBankLow;
+            return bank % MMU._romBanks;
+        }
+
+        if (MMU._mapper === 'MBC5') {
+            return MMU._mbc5RomBank % MMU._romBanks;
+        }
+
+        bank = MMU._romBank;
+        return bank % MMU._romBanks;
+    },
+
+    _isMBC5Rumble: function() {
+        return MMU._cartridgeType >= 0x1C && MMU._cartridgeType <= 0x1E;
     },
 
     _updateRTC: function() {

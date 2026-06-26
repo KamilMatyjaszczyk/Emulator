@@ -57,11 +57,21 @@ jsGB = {
     },
 
     frame: function() {
-        var frameEnd = Z80._clock.t + 70224;
-        do {
-            Z80.exec();
-        } while (Z80._clock.t < frameEnd);
-        jsGB.flushInternalSave(false);
+        try {
+            var frameEnd = Z80._clock.t + 70224;
+            do {
+                Z80.exec();
+            } while (Z80._clock.t < frameEnd);
+            if (typeof GPU !== 'undefined' &&
+                typeof GPU._present === 'function') {
+                GPU._present();
+            }
+            jsGB.flushInternalSave(false);
+        } catch (error) {
+            jsGB.pause();
+            jsGB.setStatus('Emulation stopped: ' + error.message, true);
+            console.error(error);
+        }
     },
 
     run: function() {
@@ -355,8 +365,14 @@ window.onload = function() {
         if (file) jsGB.loadROM(file);
     };
 
-    document.getElementById('reset').onclick = jsGB.reset;
-    document.getElementById('run').onclick = jsGB.run;
+    document.getElementById('reset').onclick = function(event) {
+        if (event && event.currentTarget) event.currentTarget.blur();
+        jsGB.reset();
+    };
+    document.getElementById('run').onclick = function(event) {
+        if (event && event.currentTarget) event.currentTarget.blur();
+        jsGB.run();
+    };
     document.getElementById('run').disabled = true;
     document.getElementById('reset').disabled = true;
     jsGB.updateSaveControls();

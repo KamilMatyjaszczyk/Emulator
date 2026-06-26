@@ -28,7 +28,9 @@ KEY = {
 
     wb: function(addr, val)
     {
+        var oldState = KEY.rb(addr);
         KEY._column = val & 0x30;
+        KEY._requestInterruptOnFallingEdge(oldState, KEY.rb(addr));
     },
 
     press: function(name)
@@ -36,9 +38,9 @@ KEY = {
         var button = KEY._buttons[name];
         if (!button) return;
 
-        var wasReleased = KEY._rows[button.row] & button.mask;
+        var oldState = KEY.rb(0xFF00);
         KEY._rows[button.row] &= ~button.mask;
-        if (wasReleased && typeof MMU !== 'undefined') MMU._if |= 0x10;
+        KEY._requestInterruptOnFallingEdge(oldState, KEY.rb(0xFF00));
     },
 
     release: function(name)
@@ -46,6 +48,12 @@ KEY = {
         var button = KEY._buttons[name];
         if (!button) return;
         KEY._rows[button.row] |= button.mask;
+    },
+
+    _requestInterruptOnFallingEdge: function(oldState, newState)
+    {
+        var fallingBits = oldState & ~newState & 0x0F;
+        if (fallingBits && typeof MMU !== 'undefined') MMU._if |= 0x10;
     },
 
     _eventButton: function(e)
@@ -67,11 +75,18 @@ KEY = {
         return byCode[e.code] || byKeyCode[e.keyCode];
     },
 
+    _isTextInput: function(target)
+    {
+        if (!target) return false;
+        if (target.isContentEditable) return true;
+        return /INPUT|SELECT|TEXTAREA/.test(target.tagName);
+    },
+
     kdown: function(e)
     {
         var name = KEY._eventButton(e);
         if (!name) return;
-        if (e.target && /INPUT|BUTTON/.test(e.target.tagName)) return;
+        if (KEY._isTextInput(e.target)) return;
         e.preventDefault();
         KEY.press(name);
     },
@@ -80,6 +95,7 @@ KEY = {
     {
         var name = KEY._eventButton(e);
         if (!name) return;
+        if (KEY._isTextInput(e.target)) return;
         e.preventDefault();
         KEY.release(name);
     }

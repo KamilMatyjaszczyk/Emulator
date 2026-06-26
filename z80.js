@@ -108,6 +108,9 @@ Z80 = {
         if (typeof TIMER !== 'undefined' && typeof TIMER.inc === 'function') {
             TIMER.inc();
         }
+        if (typeof MMU !== 'undefined' && typeof MMU.step === 'function') {
+            MMU.step(Z80._r.t);
+        }
         if (typeof APU !== 'undefined' && typeof APU.step === 'function') {
             APU.step(Z80._r.t);
         }

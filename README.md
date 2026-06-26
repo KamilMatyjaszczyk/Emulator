@@ -96,7 +96,7 @@ them unavailable. Downloaded `.sav` files remain useful as portable backups.
 ```mermaid
 flowchart LR
     UI[index.html / jsGB.js] --> CPU[z80.js<br>LR35902 CPU]
-    CPU --> MMU[MMU.js<br>memory map and MBC3]
+    CPU --> MMU[MMU.js<br>memory map and cartridge controllers]
     MMU --> ROM[Game Boy ROM]
     UI --> STORAGE[Browser localStorage<br>automatic cartridge saves]
     MMU --> GPU[GPU.js<br>LCD and graphics]
@@ -202,7 +202,7 @@ Later presses of **Reset** do not call `MMU.load()` again. The selected ROM rema
 
 The MMU also reads the cartridge header, including addresses `0x0147` and `0x0149`. The header describes the cartridge's memory controller, number of ROM banks, and amount of external RAM.
 
-For an MBC3 cartridge, this allows the MMU to change which part of a large ROM is visible in the `4000–7FFF` address range.
+For an MBC1 or MBC3 cartridge, this allows the MMU to change which part of a large ROM is visible in the `4000–7FFF` address range.
 
 ### 4. The CPU Starts Running the Game
 
@@ -361,7 +361,15 @@ MMU.ww(address, value);  // Write a 16-bit value
 
 ### Cartridge Controllers
 
-The project supports cartridges without a memory bank controller (`ROM ONLY`, `ROM+RAM`, and `ROM+RAM+BATTERY`) as well as MBC3 cartridge types.
+The project supports cartridges without a memory bank controller (`ROM ONLY`, `ROM+RAM`, and `ROM+RAM+BATTERY`), MBC1 cartridge types, MBC3 cartridge types, and MBC5 cartridge types.
+
+MBC1 support includes:
+
+- ROM bank switching through the lower 5-bit and upper 2-bit bank registers
+- RAM enable/disable
+- External RAM bank switching in RAM banking mode
+- Dynamic RAM sizing based on the cartridge header
+- Battery-backed RAM through the same browser/manual save system used by other cartridges
 
 MBC3 support includes:
 
@@ -372,6 +380,12 @@ MBC3 support includes:
 - RTC halt, carry, and latch behavior
 
 RTC values are only kept in memory while the page is open.
+
+MBC5 support includes:
+
+- 9-bit ROM bank switching for larger cartridges
+- External RAM enabling and bank switching
+- Battery-backed RAM through the same browser/manual save system used by other cartridges
 
 ### I/O
 
@@ -386,7 +400,12 @@ The MMU routes I/O addresses to the appropriate component:
 - `FF50`: Boot ROM disable
 - `FFFF`: Interrupt enable
 
-Serial communication is implemented as a local stub: a transfer completes immediately without a link cable.
+Serial communication is implemented as a local stub. Internal-clock transfers
+complete immediately without a link cable and return `0xFF`. External-clock
+transfers do not complete instantly; if no link partner is emulated, they time
+out as an idle/disconnected `0xFE` byte after a short delay. This keeps
+link-aware games from hanging forever while still avoiding the unrealistic
+"instant external clock" behavior that breaks some startup/link checks.
 
 ## Graphics – `GPU.js`
 
@@ -493,7 +512,7 @@ The Game Boy has five interrupt sources:
 | `timer.js` | DIV/TIMA/TMA/TAC |
 | `key.js` | Keyboard and joypad |
 | `tests/z80.test.js` | CPU regression tests |
-| `tests/mmu.test.js` | MMU, MBC3, and I/O tests |
+| `tests/mmu.test.js` | MMU, MBC1, MBC3, MBC5, and I/O tests |
 | `tests/apu.test.js` | Pulse-channel register and timing tests |
 | `tests/storage.test.js` | Automatic browser-save persistence tests |
 
@@ -556,7 +575,7 @@ The tests cover:
 - Channel 1 frequency sweep, wave channel 3, noise channel 4, and accurate
   stereo mixing are not implemented
 - No Game Boy Color hardware support
-- Only no-MBC and MBC3 cartridge types are supported
+- Only no-MBC, MBC1, MBC3, and MBC5 cartridge types are supported
 - No link cable or real serial communication
 - MBC3 RTC state is not included in exported `.sav` files
 - Browser saves depend on `localStorage` for the current site origin
@@ -569,7 +588,7 @@ The tests cover:
 Natural next steps include:
 
 1. Wave, noise, sweep, and more accurate audio mixing
-2. More memory bank controllers, such as MBC1 and MBC5
+2. More memory bank controllers beyond MBC1/MBC3/MBC5
 3. MBC3 RTC persistence
 4. Automated GPU and timer test ROMs
 5. Drag-and-drop ROM loading
