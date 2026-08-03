@@ -1,0 +1,12 @@
+{
+  "name": "game-boy-emulator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Educational Game Boy emulator written in plain JavaScript.",
+  "scripts": {
+    "test": "node tests/z80.test.js && node tests/mmu.test.js && node tests/gpu.test.js && node tests/apu.test.js && node tests/storage.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
